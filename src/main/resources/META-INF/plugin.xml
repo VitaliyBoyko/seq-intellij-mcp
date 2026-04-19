@@ -10,11 +10,12 @@
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <applicationConfigurable
+        <projectConfigurable
                 parentId="tools"
                 instance="com.vitaliiboiko.seqmcp.settings.SeqMcpConfigurable"
                 id="com.vitaliiboiko.seqmcp.settings"
-                displayName="Seq MCP"/>
+                displayName="Seq MCP"
+                nonDefaultProject="true"/>
         <toolWindow factoryClass="com.vitaliiboiko.seqmcp.toolWindow.SeqMcpToolWindowFactory" id="Seq MCP"/>
         <mcpServer.mcpToolsProvider implementation="com.vitaliiboiko.seqmcp.mcp.SeqMcpToolsProvider"/>
         <postStartupActivity implementation="com.vitaliiboiko.seqmcp.startup.SeqMcpProjectActivity" />

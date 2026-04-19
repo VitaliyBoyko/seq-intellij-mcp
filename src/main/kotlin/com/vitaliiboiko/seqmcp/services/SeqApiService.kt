@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -145,6 +146,29 @@ class SeqApiService : SeqMcpBackend {
         }
     }
 
+    suspend fun deleteEvents(
+        filter: String? = null,
+        workspace: String? = null,
+        signalId: String? = null,
+        fromDateUtc: Instant? = null,
+        toDateUtc: Instant? = null,
+    ) {
+        return withContext(Dispatchers.IO) {
+            val resourceGroup = getResourceGroup("Events", workspace)
+            val uri = resolveResourceLink(
+                resourceGroup,
+                "DeleteInSignal",
+                buildMap {
+                    signalId?.let { put("signal", it) }
+                    filter?.takeIf { it.isNotBlank() }?.let { put("filter", it) }
+                    fromDateUtc?.let { put("fromDateUtc", it.toString()) }
+                    toDateUtc?.let { put("toDateUtc", it.toString()) }
+                },
+            )
+            sendDeleteRequest(uri, workspace, buildJsonObject {})
+        }
+    }
+
     private suspend fun streamFromResourceGroup(
         groupName: String,
         linkName: String,
@@ -227,6 +251,30 @@ class SeqApiService : SeqMcpBackend {
                 currentApiKey(workspace)?.let { header(SEQ_API_KEY_HEADER, it) }
             }
             .GET()
+            .build()
+
+        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
+        if (response.statusCode() in 200..299) {
+            return response
+        }
+
+        val payload = runCatching { parseJson(response.body()).jsonObject }.getOrNull()
+        val error = payload?.get("Error")?.jsonPrimitive?.contentOrNull
+        val suffix = error?.let { ": $it" }.orEmpty()
+        throw SeqApiException(
+            message = "Seq API request failed with ${response.statusCode()}$suffix",
+            statusCode = response.statusCode(),
+        )
+    }
+
+    private fun sendDeleteRequest(uri: URI, workspace: String?, body: JsonObject): HttpResponse<String> {
+        val request = HttpRequest.newBuilder(uri)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .apply {
+                currentApiKey(workspace)?.let { header(SEQ_API_KEY_HEADER, it) }
+            }
+            .method("DELETE", HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
             .build()
 
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))

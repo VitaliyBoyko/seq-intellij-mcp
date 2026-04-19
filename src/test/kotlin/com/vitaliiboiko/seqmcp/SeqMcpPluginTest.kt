@@ -7,6 +7,7 @@ import com.vitaliiboiko.seqmcp.mcp.SeqMcpToolsProvider
 import com.vitaliiboiko.seqmcp.services.SeqApiException
 import com.vitaliiboiko.seqmcp.services.SeqMcpBackend
 import com.vitaliiboiko.seqmcp.services.SeqMcpProjectService
+import com.vitaliiboiko.seqmcp.services.SeqMcpProjectSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqMcpSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqSearchRequest
 import com.vitaliiboiko.seqmcp.services.SeqStrictExpressionResult
@@ -51,6 +52,19 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         assertEquals(SeqMcpBundle.message("status.configuredWithoutApiKey"), projectService.connectionStatus())
     }
 
+    fun testProjectServiceReportsDisabledWhenProjectToggleIsOff() {
+        resetSettings()
+        project.service<SeqMcpProjectSettingsService>().enabled = false
+
+        val projectService = project.service<SeqMcpProjectService>()
+
+        assertEquals(SeqMcpBundle.message("status.disabled"), projectService.connectionStatus())
+        assertEquals(
+            SeqMcpBundle.message("toolWindow.nextStepsDisabled"),
+            projectService.nextSteps(),
+        )
+    }
+
     fun testWorkspaceApiKeyEntriesRoundTrip() {
         val settings = resetSettings()
 
@@ -68,7 +82,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
     fun testToolsProviderCallsSeqSearchBackend() = runBlocking {
         val backend = RecordingBackend()
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqSearch")
+        val tool = createToolsProvider(backend).findTool("SeqSearch")
 
         val result = tool.call(
             buildJsonObject {
@@ -86,7 +100,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
     fun testSeqSearchNormalizesWildcardFilter() = runBlocking {
         val backend = RecordingBackend()
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqSearch")
+        val tool = createToolsProvider(backend).findTool("SeqSearch")
 
         tool.call(
             buildJsonObject {
@@ -99,7 +113,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
     fun testSeqSearchPassesDateRangePaginationAndTimeout() = runBlocking {
         val backend = RecordingBackend()
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqSearch")
+        val tool = createToolsProvider(backend).findTool("SeqSearch")
 
         tool.call(
             buildJsonObject {
@@ -121,7 +135,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
     fun testSeqSearchRejectsInvalidDateRange() = runBlocking<Unit> {
         val backend = RecordingBackend()
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqSearch")
+        val tool = createToolsProvider(backend).findTool("SeqSearch")
 
         val result = tool.call(
             buildJsonObject {
@@ -137,7 +151,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
     fun testSeqSearchRejectsInvalidDateFormat() = runBlocking<Unit> {
         val backend = RecordingBackend()
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqSearch")
+        val tool = createToolsProvider(backend).findTool("SeqSearch")
 
         val result = tool.call(
             buildJsonObject {
@@ -154,7 +168,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         val backend = RecordingBackend().apply {
             availableSignals = buildJsonArray { }
         }
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqSearch")
+        val tool = createToolsProvider(backend).findTool("SeqSearch")
 
         val result = tool.call(
             buildJsonObject {
@@ -171,7 +185,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         val backend = RecordingBackend().apply {
             searchException = SeqApiException("Filter syntax error near `@Level =`", 400)
         }
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqSearch")
+        val tool = createToolsProvider(backend).findTool("SeqSearch")
 
         val result = tool.call(
             buildJsonObject {
@@ -190,7 +204,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
                 matchedAsText = false,
             )
         }
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqToStrictFilter")
+        val tool = createToolsProvider(backend).findTool("SeqToStrictFilter")
 
         val result = tool.call(
             buildJsonObject {
@@ -213,7 +227,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
                 reasonIfMatchedAsText = "No structured syntax was recognized.",
             )
         }
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqToStrictFilter")
+        val tool = createToolsProvider(backend).findTool("SeqToStrictFilter")
 
         val result = tool.call(
             buildJsonObject {
@@ -228,7 +242,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
     fun testToolsProviderUsesWaitDefaults() = runBlocking {
         val backend = RecordingBackend()
-        val tool = SeqMcpToolsProvider(backend).findTool("SeqWaitForEvents")
+        val tool = createToolsProvider(backend).findTool("SeqWaitForEvents")
 
         val result = tool.call(buildJsonObject {})
 
@@ -240,7 +254,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
     fun testToolsProviderCallsSignalListBackend() = runBlocking {
         val backend = RecordingBackend()
-        val tool = SeqMcpToolsProvider(backend).findTool("SignalList")
+        val tool = createToolsProvider(backend).findTool("SignalList")
 
         val result = tool.call(
             buildJsonObject {
@@ -250,6 +264,23 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
 
         assertEquals("shared", backend.signalWorkspace)
         assertEquals("signal-1", result.structuredContent!!["signals"]?.jsonArray?.first()?.jsonObject?.get("Id")?.jsonPrimitive?.content)
+    }
+
+    fun testToolsProviderRejectsCallsWhenProjectIsDisabled() = runBlocking {
+        val backend = RecordingBackend()
+        val tool = SeqMcpToolsProvider(backend, enabledProjectResolver = { null }).findTool("SeqSearch")
+
+        val result = tool.call(
+            buildJsonObject {
+                put("filter", JsonPrimitive(""))
+            },
+        )
+
+        assertTrue(result.isError)
+        assertStringContains(
+            result.structuredContent!!["error"]!!.jsonPrimitive.content,
+            "disabled for the active project",
+        )
     }
 
     fun testSupportedToolsContainExpectedNames() {
@@ -284,7 +315,12 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         return getTools().first { it.descriptor.name == name }
     }
 
+    private fun createToolsProvider(backend: SeqMcpBackend): SeqMcpToolsProvider {
+        return SeqMcpToolsProvider(backend, enabledProjectResolver = { project })
+    }
+
     private fun resetSettings(): SeqMcpSettingsService {
+        project.service<SeqMcpProjectSettingsService>().enabled = true
         return service<SeqMcpSettingsService>().also {
             it.seqServerUrl = ""
             it.setApiKey(null)

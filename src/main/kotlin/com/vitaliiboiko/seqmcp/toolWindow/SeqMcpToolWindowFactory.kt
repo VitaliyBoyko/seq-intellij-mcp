@@ -1,34 +1,40 @@
 package com.vitaliiboiko.seqmcp.toolWindow
 
-import com.intellij.icons.AllIcons
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.ActionGroup
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ex.EditorEx
-import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.JBSplitter
-import com.intellij.ui.PopupHandler
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.ui.JBUI
 import com.vitaliiboiko.seqmcp.SeqMcpBundle
 import com.vitaliiboiko.seqmcp.settings.SeqMcpConfigurable
+import com.vitaliiboiko.seqmcp.services.SeqApiException
+import com.vitaliiboiko.seqmcp.services.SeqApiService
 import com.vitaliiboiko.seqmcp.services.SeqMcpLogService
 import com.vitaliiboiko.seqmcp.services.SeqMcpLogSnapshot
 import com.vitaliiboiko.seqmcp.services.SeqMcpProjectService
+import com.vitaliiboiko.seqmcp.services.SeqSearchRequest
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.FlowLayout
 import java.awt.GridLayout
 import javax.swing.JButton
@@ -42,17 +48,19 @@ class SeqMcpToolWindowFactory : ToolWindowFactory {
         toolWindow.contentManager.addContent(content)
     }
 
-    override fun shouldBeAvailable(project: Project): Boolean = true
+    override fun shouldBeAvailable(project: Project): Boolean = project.service<SeqMcpProjectService>().isEnabledForProject()
 }
 
 private class SeqMcpToolWindow(private val project: Project) : Disposable {
 
     private val projectService = project.service<SeqMcpProjectService>()
+    private val apiService = service<SeqApiService>()
     private val logService = project.service<SeqMcpLogService>()
     private val statusLabel = JBLabel()
     private val urlLabel = JBLabel()
     private val apiKeyLabel = JBLabel()
     private val toolsLabel = JBLabel()
+    private val nextStepsLabel = JBLabel()
     private val logDocument = EditorFactory.getInstance().createDocument("")
     private val logEditor = EditorFactory.getInstance().createViewer(logDocument, project) as EditorEx
 
@@ -67,7 +75,7 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
             add(apiKeyLabel)
             add(toolsLabel)
             add(JBLabel(SeqMcpBundle.message("toolWindow.project", projectService.projectName())))
-            add(JBLabel(SeqMcpBundle.message("toolWindow.nextSteps")))
+            add(nextStepsLabel)
         }
 
         val settingsActions = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
@@ -76,6 +84,26 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
                     ShowSettingsUtil.getInstance().showSettingsDialog(project, SeqMcpConfigurable::class.java)
                     refresh()
                     logService.append(SeqMcpBundle.message("log.settingsOpened"))
+                }
+            })
+            add(JButton(SeqMcpBundle.message("toolWindow.fetchLast10Events")).apply {
+                toolTipText = SeqMcpBundle.message("toolWindow.fetchLast10EventsDescription")
+                styleButton(
+                    background = JBColor(Color(0x0D47A1), Color(0x1565C0)),
+                    foreground = JBColor(Color.WHITE, Color.WHITE),
+                )
+                addActionListener {
+                    fetchLast10Events()
+                }
+            })
+            add(JButton(SeqMcpBundle.message("toolWindow.clearSeqEvents")).apply {
+                toolTipText = SeqMcpBundle.message("toolWindow.clearSeqEventsDescription")
+                styleButton(
+                    background = JBColor(Color(0xB71C1C), Color(0xC62828)),
+                    foreground = JBColor(Color.WHITE, Color.WHITE),
+                )
+                addActionListener {
+                    clearSeqEvents()
                 }
             })
             add(JButton(SeqMcpBundle.message("toolWindow.refresh")).apply {
@@ -89,24 +117,9 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
         }
 
         configureLogEditor()
-        val clearLogAction = ClearLogAction(project, logService)
-        val logToolbar = ActionManager.getInstance()
-            .createActionToolbar(
-                "SeqMcpLogToolbar",
-                DefaultActionGroup().apply {
-                    ActionManager.getInstance().getAction(GOTO_LINE_ACTION_ID)?.let { add(it) }
-                    addSeparator()
-                    add(clearLogAction)
-                },
-                true,
-            ).apply {
-                targetComponent = logEditor.contentComponent
-            }
-        installLogPopupMenu(clearLogAction)
 
         val logHeader = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             add(JBLabel(SeqMcpBundle.message("toolWindow.logTitle")), BorderLayout.WEST)
-            add(logToolbar.component, BorderLayout.EAST)
         }
 
         val logPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
@@ -138,6 +151,155 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
         urlLabel.text = SeqMcpBundle.message("toolWindow.url", projectService.seqServerUrl())
         apiKeyLabel.text = SeqMcpBundle.message("toolWindow.apiKey", projectService.apiKeyStatus())
         toolsLabel.text = SeqMcpBundle.message("toolWindow.tools", projectService.supportedTools())
+        nextStepsLabel.text = projectService.nextSteps()
+    }
+
+    private fun clearSeqEvents() {
+        if (!projectService.isEnabledForProject()) {
+            showNotification(
+                content = SeqMcpBundle.message("notification.seqClearDisabled"),
+                type = NotificationType.WARNING,
+            )
+            return
+        }
+
+        if (projectService.seqServerUrl() == SeqMcpBundle.message("value.notSet")) {
+            showNotification(
+                content = SeqMcpBundle.message("notification.seqClearNotConfigured"),
+                type = NotificationType.WARNING,
+            )
+            return
+        }
+
+        val confirmed = Messages.showYesNoDialog(
+            project,
+            SeqMcpBundle.message("dialog.clearSeqEvents.message"),
+            SeqMcpBundle.message("dialog.clearSeqEvents.title"),
+            Messages.getWarningIcon(),
+        ) == Messages.YES
+        if (!confirmed) {
+            return
+        }
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(
+            project,
+            SeqMcpBundle.message("progress.clearSeqEvents"),
+            true,
+        ) {
+            override fun run(indicator: ProgressIndicator) {
+                indicator.text = SeqMcpBundle.message("progress.clearSeqEvents")
+                runBlocking {
+                    apiService.deleteEvents()
+                }
+            }
+
+            override fun onSuccess() {
+                logService.append(SeqMcpBundle.message("log.seqEventsCleared"))
+                showNotification(
+                    content = SeqMcpBundle.message("notification.seqEventsCleared"),
+                    type = NotificationType.INFORMATION,
+                )
+            }
+
+            override fun onThrowable(error: Throwable) {
+                val message = when (error) {
+                    is SeqApiException -> error.message ?: SeqMcpBundle.message("notification.seqEventsClearFailed")
+                    else -> SeqMcpBundle.message("notification.seqEventsClearFailed")
+                }
+                logService.append(SeqMcpBundle.message("log.seqEventsClearFailed", message))
+                showNotification(
+                    content = message,
+                    type = NotificationType.ERROR,
+                )
+            }
+        })
+    }
+
+    private fun fetchLast10Events() {
+        if (!projectService.isEnabledForProject()) {
+            showNotification(
+                content = SeqMcpBundle.message("notification.seqFetchDisabled"),
+                type = NotificationType.WARNING,
+            )
+            return
+        }
+
+        if (projectService.seqServerUrl() == SeqMcpBundle.message("value.notSet")) {
+            showNotification(
+                content = SeqMcpBundle.message("notification.seqFetchNotConfigured"),
+                type = NotificationType.WARNING,
+            )
+            return
+        }
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(
+            project,
+            SeqMcpBundle.message("progress.fetchLast10Events"),
+            true,
+        ) {
+            private var fetched: List<JsonObject> = emptyList()
+
+            override fun run(indicator: ProgressIndicator) {
+                indicator.text = SeqMcpBundle.message("progress.fetchLast10Events")
+                fetched = runBlocking {
+                    apiService.searchEvents(
+                        SeqSearchRequest(
+                            filter = "",
+                            count = 10,
+                            timeoutSeconds = 15,
+                        ),
+                    )
+                }.map { it as JsonObject }
+            }
+
+            override fun onSuccess() {
+                logService.append(SeqMcpBundle.message("log.seqLast10EventsFetched", fetched.size))
+                fetched.forEachIndexed { index, event ->
+                    logService.append(SeqMcpBundle.message("log.seqLast10EventItem", index + 1, eventSummary(event)))
+                }
+                showNotification(
+                    content = SeqMcpBundle.message("notification.seqLast10EventsFetched", fetched.size),
+                    type = NotificationType.INFORMATION,
+                )
+            }
+
+            override fun onThrowable(error: Throwable) {
+                val message = when (error) {
+                    is SeqApiException -> error.message ?: SeqMcpBundle.message("notification.seqLast10EventsFailed")
+                    else -> SeqMcpBundle.message("notification.seqLast10EventsFailed")
+                }
+                logService.append(SeqMcpBundle.message("log.seqLast10EventsFetchFailed", message))
+                showNotification(
+                    content = message,
+                    type = NotificationType.ERROR,
+                )
+            }
+        })
+    }
+
+    private fun showNotification(content: String, type: NotificationType) {
+        Notification(
+            "Seq MCP",
+            SeqMcpBundle.message("notification.title"),
+            content,
+            type,
+        ).notify(project)
+    }
+
+    private fun eventSummary(event: JsonObject): String {
+        val id = event["Id"]?.jsonPrimitive?.contentOrNull
+        val rendered = event["RenderedMessage"]?.jsonPrimitive?.contentOrNull
+        val fallback = event["MessageTemplate"]?.jsonPrimitive?.contentOrNull ?: "<no message>"
+        val message = (rendered ?: fallback).replace('\n', ' ').take(80)
+        return listOfNotNull(id).joinToString(prefix = "[", postfix = "] ") + message
+    }
+
+    private fun JButton.styleButton(background: Color, foreground: Color) {
+        this.background = background
+        this.foreground = foreground
+        isOpaque = true
+        isContentAreaFilled = true
+        border = JBUI.Borders.empty(6, 10)
     }
 
     private fun configureLogEditor() {
@@ -153,17 +315,6 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
                 additionalLinesCount = 0
             }
         }
-    }
-
-    private fun installLogPopupMenu(clearLogAction: ClearLogAction) {
-        val popupActionGroup = DefaultActionGroup().apply {
-            (ActionManager.getInstance().getAction(EDITOR_POPUP_MENU_ACTION_ID) as? ActionGroup)
-                ?.getChildren(null)
-                ?.forEach(::add)
-            addSeparator()
-            add(clearLogAction)
-        }
-        PopupHandler.installPopupMenu(logEditor.contentComponent, popupActionGroup, EDITOR_POPUP_MENU_ACTION_ID)
     }
 
     private fun renderLog(snapshot: SeqMcpLogSnapshot) {
@@ -182,40 +333,5 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
 
     override fun dispose() {
         EditorFactory.getInstance().releaseEditor(logEditor)
-    }
-
-    companion object {
-        private const val GOTO_LINE_ACTION_ID = "GotoLine"
-        private const val EDITOR_POPUP_MENU_ACTION_ID = "EditorPopupMenu"
-    }
-}
-
-private class ClearLogAction(
-    private val project: Project,
-    private val logService: SeqMcpLogService,
-) : DumbAwareAction(
-    SeqMcpBundle.message("toolWindow.clearLog"),
-    SeqMcpBundle.message("toolWindow.clearLogDescription"),
-    AllIcons.Actions.GC,
-) {
-
-    override fun actionPerformed(event: AnActionEvent) {
-        val removedCount = logService.clear()
-        val content = if (removedCount == 0) {
-            SeqMcpBundle.message("notification.logAlreadyEmpty")
-        } else {
-            SeqMcpBundle.message("notification.logCleared", removedCount)
-        }
-
-        Notification(
-            "Seq MCP",
-            SeqMcpBundle.message("notification.title"),
-            content,
-            NotificationType.INFORMATION,
-        ).notify(project)
-    }
-
-    override fun update(event: AnActionEvent) {
-        event.presentation.isEnabled = logService.recordCount() > 0
     }
 }

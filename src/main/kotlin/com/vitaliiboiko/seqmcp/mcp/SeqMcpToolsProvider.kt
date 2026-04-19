@@ -1,5 +1,6 @@
 package com.vitaliiboiko.seqmcp.mcp
 
+import com.intellij.ide.impl.ProjectUtil
 import com.intellij.mcpserver.McpTool
 import com.intellij.mcpserver.McpToolCategory
 import com.intellij.mcpserver.McpToolCallResult
@@ -7,9 +8,12 @@ import com.intellij.mcpserver.McpToolDescriptor
 import com.intellij.mcpserver.McpToolSchema
 import com.intellij.mcpserver.McpToolsProvider
 import com.intellij.openapi.components.service
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.vitaliiboiko.seqmcp.services.SeqApiService
 import com.vitaliiboiko.seqmcp.services.SeqApiException
 import com.vitaliiboiko.seqmcp.services.SeqMcpBackend
+import com.vitaliiboiko.seqmcp.services.SeqMcpProjectSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqSearchRequest
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -27,6 +31,7 @@ import java.time.format.DateTimeParseException
 
 class SeqMcpToolsProvider @JvmOverloads constructor(
     private val backend: SeqMcpBackend = service<SeqApiService>(),
+    private val enabledProjectResolver: () -> Project? = ::resolveEnabledProject,
 ) : McpToolsProvider {
     private val toolCategory = McpToolCategory(
         shortName = "seq",
@@ -84,6 +89,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 outputSchema = seqSearchOutputSchema(),
             ),
         ) { arguments ->
+            ensureEnabledProject(enabledProjectResolver)
             val request = buildSeqSearchRequest(arguments)
             backend.validateSignalIfNeeded(request.signalId, request.workspace)
 
@@ -126,6 +132,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 outputSchema = eventsOutputSchema("capturedEvents"),
             ),
         ) { arguments ->
+            ensureEnabledProject(enabledProjectResolver)
             val filter = optionalString(arguments, "filter")
             val count = optionalInt(arguments, "count") ?: 10
             val workspace = optionalString(arguments, "workspace")
@@ -166,6 +173,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
+            ensureEnabledProject(enabledProjectResolver)
             val fuzzy = requiredString(arguments, "fuzzy")
             val workspace = optionalString(arguments, "workspace")
             val result = backend.toStrictFilterExpression(fuzzy, workspace)
@@ -199,6 +207,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
+            ensureEnabledProject(enabledProjectResolver)
             val workspace = optionalString(arguments, "workspace")
             val signals = backend.listSignals(workspace)
             success(
@@ -421,4 +430,21 @@ private fun looksLikeFilterSyntaxError(message: String): Boolean {
 
 private fun JsonObjectBuilder.putNullable(name: String, value: String?) {
     put(name, value?.let(::JsonPrimitive) ?: JsonNull)
+}
+
+private fun ensureEnabledProject(enabledProjectResolver: () -> Project?): Project {
+    return enabledProjectResolver() ?: throw IllegalStateException(
+        "Seq MCP is disabled for the active project. Enable it in Settings | Tools | Seq MCP.",
+    )
+}
+
+private fun resolveEnabledProject(): Project? {
+    val openProjects = ProjectManager.getInstance().openProjects.filterNot(Project::isDisposed)
+    val activeProject = ProjectUtil.getActiveProject()
+    if (activeProject != null && activeProject in openProjects && activeProject.service<SeqMcpProjectSettingsService>().enabled) {
+        return activeProject
+    }
+
+    val enabledProjects = openProjects.filter { it.service<SeqMcpProjectSettingsService>().enabled }
+    return enabledProjects.singleOrNull()
 }

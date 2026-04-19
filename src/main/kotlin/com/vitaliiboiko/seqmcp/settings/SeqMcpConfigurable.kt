@@ -3,8 +3,11 @@ package com.vitaliiboiko.seqmcp.settings
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.options.SearchableConfigurable
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.ThrowableComputable
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBPanel
@@ -12,6 +15,7 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.panel
 import com.vitaliiboiko.seqmcp.SeqMcpBundle
+import com.vitaliiboiko.seqmcp.services.SeqMcpProjectSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqMcpSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqMcpSettingsSnapshot
 import com.vitaliiboiko.seqmcp.services.WorkspaceApiKeyEntry
@@ -22,7 +26,7 @@ import javax.swing.JComponent
 import javax.swing.JButton
 import javax.swing.JPanel
 
-class SeqMcpConfigurable : SearchableConfigurable, Configurable.NoScroll {
+class SeqMcpConfigurable(private val project: Project) : SearchableConfigurable, Configurable.NoScroll {
 
     private var settingsComponent: SeqMcpSettingsComponent? = null
 
@@ -38,15 +42,24 @@ class SeqMcpConfigurable : SearchableConfigurable, Configurable.NoScroll {
 
     override fun isModified(): Boolean {
         val component = settingsComponent ?: return false
-        return component.isModified(SeqMcpSettingsService.getInstance())
+        return component.isModified(
+            settings = SeqMcpSettingsService.getInstance(),
+        )
     }
 
     override fun apply() {
-        settingsComponent?.apply(SeqMcpSettingsService.getInstance())
+        settingsComponent?.apply(
+            project = project,
+            projectSettings = SeqMcpProjectSettingsService.getInstance(project),
+            settings = SeqMcpSettingsService.getInstance(),
+        )
     }
 
     override fun reset() {
-        settingsComponent?.reset(SeqMcpSettingsService.getInstance())
+        settingsComponent?.reset(
+            projectSettings = SeqMcpProjectSettingsService.getInstance(project),
+            settings = SeqMcpSettingsService.getInstance(),
+        )
     }
 
     override fun disposeUIResources() {
@@ -55,9 +68,11 @@ class SeqMcpConfigurable : SearchableConfigurable, Configurable.NoScroll {
 }
 
 private class SeqMcpSettingsComponent {
+    private val enabledForProjectCheckBox = JBCheckBox(SeqMcpBundle.message("settings.enableProject.label"))
     private val seqServerUrlField = JBTextField()
     private val apiKeyField = JBPasswordField()
     private val workspaceRows = mutableListOf<WorkspaceApiKeyRow>()
+    private var loadedEnabledForProject = true
     private var loadedSnapshot = SeqMcpSettingsSnapshot("", null, emptyList())
     private val workspaceRowsPanel = JBPanel<JBPanel<*>>().apply {
         layout = javax.swing.BoxLayout(this, javax.swing.BoxLayout.Y_AXIS)
@@ -67,6 +82,12 @@ private class SeqMcpSettingsComponent {
     }
 
     val panel: DialogPanel = panel {
+        group(SeqMcpBundle.message("settings.group.project")) {
+            row {
+                cell(enabledForProjectCheckBox)
+                    .comment(SeqMcpBundle.message("settings.enableProject.comment"))
+            }
+        }
         group(SeqMcpBundle.message("settings.group.connection")) {
             row(SeqMcpBundle.message("settings.url.label")) {
                 cell(seqServerUrlField)
@@ -96,12 +117,14 @@ private class SeqMcpSettingsComponent {
             WorkspaceApiKeyEntry(row.workspaceId(), row.apiKey())
         }.normalizeWorkspaceRows()
 
-        return seqServerUrlField.text != loadedSnapshot.seqServerUrl ||
+        return enabledForProjectCheckBox.isSelected != loadedEnabledForProject ||
+            seqServerUrlField.text != loadedSnapshot.seqServerUrl ||
             String(apiKeyField.password) != loadedSnapshot.defaultApiKey.orEmpty() ||
             currentRows != loadedSnapshot.workspaceApiKeyEntries
     }
 
-    fun apply(settings: SeqMcpSettingsService) {
+    fun apply(project: Project, projectSettings: SeqMcpProjectSettingsService, settings: SeqMcpSettingsService) {
+        projectSettings.enabled = enabledForProjectCheckBox.isSelected
         settings.seqServerUrl = seqServerUrlField.text.trim()
         settings.setApiKey(String(apiKeyField.password).trim())
         settings.setWorkspaceApiKeyEntries(
@@ -109,9 +132,14 @@ private class SeqMcpSettingsComponent {
                 WorkspaceApiKeyEntry(row.workspaceId(), row.apiKey())
             }.normalizeWorkspaceRows(),
         )
+        ToolWindowManager.getInstance(project).getToolWindow("Seq MCP")?.setAvailable(projectSettings.enabled)
+        loadedEnabledForProject = projectSettings.enabled
+        loadedSnapshot = settings.loadSnapshot()
     }
 
-    fun reset(settings: SeqMcpSettingsService) {
+    fun reset(projectSettings: SeqMcpProjectSettingsService, settings: SeqMcpSettingsService) {
+        loadedEnabledForProject = projectSettings.enabled
+        enabledForProjectCheckBox.isSelected = loadedEnabledForProject
         seqServerUrlField.text = settings.seqServerUrl
         loadedSnapshot = loadSnapshot(settings)
         apiKeyField.text = loadedSnapshot.defaultApiKey.orEmpty()

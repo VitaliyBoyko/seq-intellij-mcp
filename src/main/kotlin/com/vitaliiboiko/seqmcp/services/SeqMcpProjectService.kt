@@ -6,12 +6,18 @@ import com.vitaliiboiko.seqmcp.SeqMcpBundle
 
 @Service(Service.Level.PROJECT)
 class SeqMcpProjectService(private val project: Project) {
+    private val projectSettings = SeqMcpProjectSettingsService.getInstance(project)
     private val settings = SeqMcpSettingsService.getInstance()
     private val tools = SeqMcpToolService.getInstance()
 
     fun projectName(): String = project.name
 
+    fun isEnabledForProject(): Boolean = projectSettings.enabled
+
     fun connectionStatus(): String {
+        if (!isEnabledForProject()) {
+            return SeqMcpBundle.message("status.disabled")
+        }
         if (!settings.isConfigured()) {
             return SeqMcpBundle.message("status.notConfigured")
         }
@@ -40,5 +46,18 @@ class SeqMcpProjectService(private val project: Project) {
         }
     }
 
-    fun supportedTools(): String = tools.supportedTools().joinToString(", ") { it.name }
+    fun supportedTools(): String {
+        if (!isEnabledForProject()) {
+            return SeqMcpBundle.message("toolWindow.toolsDisabledValue")
+        }
+        return tools.supportedTools().joinToString(", ") { it.name }
+    }
+
+    fun nextSteps(): String {
+        return if (isEnabledForProject()) {
+            SeqMcpBundle.message("toolWindow.nextSteps")
+        } else {
+            SeqMcpBundle.message("toolWindow.nextStepsDisabled")
+        }
+    }
 }
