@@ -17,6 +17,7 @@ import java.io.IOException
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
+import java.net.http.HttpHeaders
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.net.http.WebSocket
@@ -35,6 +36,29 @@ interface SeqMcpBackend {
     suspend fun listSignals(workspace: String?): JsonArray
 
     suspend fun toStrictFilterExpression(fuzzy: String, workspace: String?): SeqStrictExpressionResult
+
+    suspend fun querySql(request: SeqSqlQueryRequest): JsonObject
+
+    suspend fun querySqlCsv(request: SeqSqlQueryRequest): String
+
+    suspend fun listSqlQueries(ownerId: String?, shared: Boolean, workspace: String?): JsonArray
+
+    suspend fun getSqlQuery(id: String, workspace: String?): JsonObject
+
+    suspend fun listWorkspaces(ownerId: String?, shared: Boolean, workspace: String?): JsonArray
+
+    suspend fun getWorkspace(id: String, workspace: String?): JsonObject
+
+    suspend fun listDashboards(ownerId: String?, shared: Boolean, workspace: String?): JsonArray
+
+    suspend fun getDashboard(id: String, workspace: String?): JsonObject
+
+    suspend fun createPermalink(
+        eventId: String,
+        workspace: String? = null,
+        includeEvent: Boolean = false,
+        renderEvent: Boolean = false,
+    ): JsonObject
 }
 
 data class SeqSearchRequest(
@@ -46,6 +70,15 @@ data class SeqSearchRequest(
     val toDateUtc: Instant? = null,
     val afterId: String? = null,
     val timeoutSeconds: Int = 15,
+)
+
+data class SeqSqlQueryRequest(
+    val query: String,
+    val workspace: String? = null,
+    val signalId: String? = null,
+    val rangeStartUtc: Instant? = null,
+    val rangeEndUtc: Instant? = null,
+    val timeoutSeconds: Int? = null,
 )
 
 class SeqApiException(
@@ -146,6 +179,148 @@ class SeqApiService : SeqMcpBackend {
         }
     }
 
+    override suspend fun querySql(request: SeqSqlQueryRequest): JsonObject {
+        require(request.query.isNotBlank()) { "query must not be blank" }
+        request.timeoutSeconds?.let { require(it in 1..300) { "timeoutSeconds must be between 1 and 300" } }
+
+        return withContext(Dispatchers.IO) {
+            val resourceGroup = getResourceGroup("Data", request.workspace)
+            val response = sendJsonRequest(
+                method = "POST",
+                uri = resolveResourceLink(
+                    resourceGroup,
+                    "Query",
+                    buildMap {
+                        put("q", request.query)
+                        request.rangeStartUtc?.let { put("rangeStartUtc", it.toString()) }
+                        request.rangeEndUtc?.let { put("rangeEndUtc", it.toString()) }
+                        request.signalId?.let { put("signal", it) }
+                        request.timeoutSeconds?.let { put("timeoutMS", it * 1000) }
+                    },
+                ),
+                workspace = request.workspace,
+                body = buildJsonObject {},
+            )
+            parseJson(response.body()).jsonObject
+        }
+    }
+
+    override suspend fun querySqlCsv(request: SeqSqlQueryRequest): String {
+        require(request.query.isNotBlank()) { "query must not be blank" }
+        request.timeoutSeconds?.let { require(it in 1..300) { "timeoutSeconds must be between 1 and 300" } }
+
+        return withContext(Dispatchers.IO) {
+            val resourceGroup = getResourceGroup("Data", request.workspace)
+            sendJsonRequest(
+                method = "POST",
+                uri = resolveResourceLink(
+                    resourceGroup,
+                    "Query",
+                    buildMap {
+                        put("q", request.query)
+                        put("format", "text/csv")
+                        request.rangeStartUtc?.let { put("rangeStartUtc", it.toString()) }
+                        request.rangeEndUtc?.let { put("rangeEndUtc", it.toString()) }
+                        request.signalId?.let { put("signal", it) }
+                        request.timeoutSeconds?.let { put("timeoutMS", it * 1000) }
+                    },
+                ),
+                workspace = request.workspace,
+                body = buildJsonObject {},
+                accept = "text/csv",
+            ).body()
+        }
+    }
+
+    override suspend fun listSqlQueries(ownerId: String?, shared: Boolean, workspace: String?): JsonArray {
+        return listResourceGroupItems(
+            groupName = "SqlQueries",
+            workspace = workspace,
+            parameters = mapOf(
+                "ownerId" to ownerId,
+                "shared" to shared,
+            ),
+        )
+    }
+
+    override suspend fun getSqlQuery(id: String, workspace: String?): JsonObject {
+        require(id.isNotBlank()) { "id must not be blank" }
+        return getResourceGroupItem("SqlQueries", workspace, id)
+    }
+
+    override suspend fun listWorkspaces(ownerId: String?, shared: Boolean, workspace: String?): JsonArray {
+        return listResourceGroupItems(
+            groupName = "Workspaces",
+            workspace = workspace,
+            parameters = mapOf(
+                "ownerId" to ownerId,
+                "shared" to shared,
+            ),
+        )
+    }
+
+    override suspend fun getWorkspace(id: String, workspace: String?): JsonObject {
+        require(id.isNotBlank()) { "id must not be blank" }
+        return getResourceGroupItem("Workspaces", workspace, id)
+    }
+
+    override suspend fun listDashboards(ownerId: String?, shared: Boolean, workspace: String?): JsonArray {
+        return listResourceGroupItems(
+            groupName = "Dashboards",
+            workspace = workspace,
+            parameters = mapOf(
+                "ownerId" to ownerId,
+                "shared" to shared,
+            ),
+        )
+    }
+
+    override suspend fun getDashboard(id: String, workspace: String?): JsonObject {
+        require(id.isNotBlank()) { "id must not be blank" }
+        return getResourceGroupItem("Dashboards", workspace, id)
+    }
+
+    override suspend fun createPermalink(
+        eventId: String,
+        workspace: String?,
+        includeEvent: Boolean,
+        renderEvent: Boolean,
+    ): JsonObject {
+        require(eventId.isNotBlank()) { "eventId must not be blank" }
+
+        return withContext(Dispatchers.IO) {
+            val resourceGroup = getResourceGroup("Permalinks", workspace)
+            val created = parseJson(
+                sendJsonRequest(
+                    method = "POST",
+                    uri = resolveResourceLink(resourceGroup, "Items"),
+                    workspace = workspace,
+                    body = buildJsonObject {
+                        put("EventId", JsonPrimitive(eventId))
+                    },
+                ).body(),
+            ).jsonObject
+
+            val permalink = if (includeEvent || renderEvent) {
+                val id = created["Id"]?.jsonPrimitive?.contentOrNull
+                    ?: throw IOException("Seq returned a permalink without an Id")
+                getResourceGroupItem(
+                    groupName = "Permalinks",
+                    workspace = workspace,
+                    id = id,
+                    additionalParameters = mapOf(
+                        "includeEvent" to includeEvent,
+                        "renderEvent" to renderEvent,
+                    ),
+                )
+            } else {
+                created
+            }
+
+            withResolvedLinks(permalink)
+        }
+    }
+
     suspend fun deleteEvents(
         filter: String? = null,
         workspace: String? = null,
@@ -223,6 +398,44 @@ class SeqApiService : SeqMcpBackend {
         return parseJson(sendRequest(resolveResourceLink(root, "${groupName}Resources"), workspace).body()).jsonObject
     }
 
+    private suspend fun listResourceGroupItems(
+        groupName: String,
+        workspace: String?,
+        parameters: Map<String, Any?> = emptyMap(),
+    ): JsonArray {
+        return withContext(Dispatchers.IO) {
+            val resourceGroup = getResourceGroup(groupName, workspace)
+            val response = sendRequest(resolveResourceLink(resourceGroup, "Items", parameters), workspace)
+            when (val payload = parseJson(response.body())) {
+                is JsonArray -> payload
+                else -> throw IOException("Unexpected Seq response for $groupName list")
+            }
+        }
+    }
+
+    private suspend fun getResourceGroupItem(
+        groupName: String,
+        workspace: String?,
+        id: String,
+        additionalParameters: Map<String, Any?> = emptyMap(),
+    ): JsonObject {
+        return withContext(Dispatchers.IO) {
+            val resourceGroup = getResourceGroup(groupName, workspace)
+            val response = sendRequest(
+                resolveResourceLink(
+                    resourceGroup,
+                    "Item",
+                    buildMap {
+                        put("id", id)
+                        putAll(additionalParameters)
+                    },
+                ),
+                workspace,
+            )
+            parseJson(response.body()).jsonObject
+        }
+    }
+
     private fun resolveResourceLink(
         entity: JsonObject,
         linkName: String,
@@ -253,30 +466,38 @@ class SeqApiService : SeqMcpBackend {
             .GET()
             .build()
 
-        val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
-        if (response.statusCode() in 200..299) {
-            return response
-        }
-
-        val payload = runCatching { parseJson(response.body()).jsonObject }.getOrNull()
-        val error = payload?.get("Error")?.jsonPrimitive?.contentOrNull
-        val suffix = error?.let { ": $it" }.orEmpty()
-        throw SeqApiException(
-            message = "Seq API request failed with ${response.statusCode()}$suffix",
-            statusCode = response.statusCode(),
-        )
+        return sendChecked(request)
     }
 
     private fun sendDeleteRequest(uri: URI, workspace: String?, body: JsonObject): HttpResponse<String> {
+        return sendJsonRequest(
+            method = "DELETE",
+            uri = uri,
+            workspace = workspace,
+            body = body,
+        )
+    }
+
+    private fun sendJsonRequest(
+        method: String,
+        uri: URI,
+        workspace: String?,
+        body: JsonObject,
+        accept: String = "application/json",
+    ): HttpResponse<String> {
         val request = HttpRequest.newBuilder(uri)
-            .header("Accept", "application/json")
+            .header("Accept", accept)
             .header("Content-Type", "application/json")
             .apply {
                 currentApiKey(workspace)?.let { header(SEQ_API_KEY_HEADER, it) }
             }
-            .method("DELETE", HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
+            .method(method, HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
             .build()
 
+        return sendChecked(request)
+    }
+
+    private fun sendChecked(request: HttpRequest): HttpResponse<String> {
         val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
         if (response.statusCode() in 200..299) {
             return response
@@ -303,6 +524,21 @@ class SeqApiService : SeqMcpBackend {
     private fun currentApiKey(workspaceId: String?): String? {
         return settings.getApiKey(workspaceId)?.takeIf { it.isNotBlank() }
             ?: settings.getApiKey()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun withResolvedLinks(entity: JsonObject): JsonObject {
+        val links = entity["Links"]?.jsonObject ?: return entity
+        val resolvedLinks = buildJsonObject {
+            links.forEach { (name, value) ->
+                value.jsonPrimitive.contentOrNull?.let { put(name, JsonPrimitive(resolveAgainstBase(it).toString())) }
+            }
+        }
+
+        return JsonObject(
+            entity.toMutableMap().apply {
+                put("ResolvedLinks", resolvedLinks)
+            },
+        )
     }
 
     private fun resolveUriTemplate(template: String, parameters: Map<String, Any?>): String {
