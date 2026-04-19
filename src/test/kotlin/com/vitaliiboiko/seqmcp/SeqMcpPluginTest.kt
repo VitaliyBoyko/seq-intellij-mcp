@@ -5,6 +5,8 @@ import com.intellij.mcpserver.McpTool
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.vitaliiboiko.seqmcp.mcp.SeqMcpToolsProvider
 import com.vitaliiboiko.seqmcp.services.SeqApiException
+import com.vitaliiboiko.seqmcp.services.SeqAuthContext
+import com.vitaliiboiko.seqmcp.services.SeqCapabilityReport
 import com.vitaliiboiko.seqmcp.services.SeqMcpBackend
 import com.vitaliiboiko.seqmcp.services.SeqMcpProjectService
 import com.vitaliiboiko.seqmcp.services.SeqMcpProjectSettingsService
@@ -303,6 +305,56 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         assertStringContains(result.structuredContent!!["csv"]!!.jsonPrimitive.content, "Errors")
     }
 
+    fun testSeqQuerySqlReturnsStructuredGuidanceOnHttp400() = runBlocking {
+        val backend = RecordingBackend().apply {
+            sqlQueryException = SeqApiException(
+                message = "Seq API request failed with 400: The query could not be executed.",
+                statusCode = 400,
+                seqError = "The query could not be executed.",
+                seqSuggestion = "Use limit instead of top.",
+                seqReasons = listOf("`top` is not valid in Seq SQL.", "Queries should read from `stream`."),
+            )
+        }
+        val tool = createToolsProvider(backend).findTool("SeqQuerySql")
+
+        val result = tool.call(
+            buildJsonObject {
+                put("query", JsonPrimitive("select top 50 Timestamp, @Level, @Message from stream"))
+            },
+        )
+
+        assertTrue(result.isError)
+        assertStringContains(result.structuredContent!!["error"]!!.jsonPrimitive.content, "Seq rejected the SQL query")
+        assertEquals("Use limit instead of top.", result.structuredContent!!["suggestion"]?.jsonPrimitive?.content)
+        val reasons = result.structuredContent!!["reasons"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertTrue(reasons.any { it.contains("top") })
+        val dialect = result.structuredContent!!["dialect"]!!.jsonObject
+        assertStringContains(dialect["rowLimit"]!!.jsonPrimitive.content, "limit")
+        val examples = result.structuredContent!!["exampleQueries"]!!.jsonArray
+        assertEquals(5, examples.size)
+        assertStringContains(
+            result.structuredContent!!["messageTextSearch"]!!.jsonObject["useSeqSearch"]!!.jsonPrimitive.content,
+            "SeqSearch",
+        )
+    }
+
+    fun testSeqDescribeSqlDialectReturnsExamplesAndGuidance() = runBlocking {
+        val backend = RecordingBackend()
+        val tool = createToolsProvider(backend).findTool("SeqDescribeSqlDialect")
+
+        val result = tool.call(buildJsonObject {})
+
+        assertFalse(result.isError)
+        val dialect = result.structuredContent!!["dialect"]!!.jsonObject
+        assertStringContains(dialect["source"]!!.jsonPrimitive.content, "`from stream`")
+        assertStringContains(dialect["rowLimit"]!!.jsonPrimitive.content, "limit")
+        val firstExample = result.structuredContent!!["exampleQueries"]!!.jsonArray.first().jsonObject
+        assertEquals("Hello world count", firstExample["title"]?.jsonPrimitive?.content)
+        assertEquals("select count(*) as Events from stream", firstExample["query"]?.jsonPrimitive?.content)
+        val textSearch = result.structuredContent!!["messageTextSearch"]!!.jsonObject
+        assertStringContains(textSearch["inSql"]!!.jsonPrimitive.content, "@Message like")
+    }
+
     fun testSeqSqlQueryListSummarizesSavedQueries() = runBlocking {
         val backend = RecordingBackend()
         val tool = createToolsProvider(backend).findTool("SeqSqlQueryList")
@@ -372,6 +424,109 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         assertEquals("permalink-1", permalink["id"]?.jsonPrimitive?.content)
         assertEquals("event-123", permalink["eventId"]?.jsonPrimitive?.content)
         assertStringContains(permalink["resolvedLinks"]!!.jsonObject["Self"]!!.jsonPrimitive.content, "permalink-1")
+        val authContext = result.structuredContent!!["authContext"]!!.jsonObject
+        assertEquals("user-1", authContext["resolvedUserId"]?.jsonPrimitive?.content)
+        val capabilities = result.structuredContent!!["capabilities"]!!.jsonObject
+        assertEquals("true", capabilities["canCreatePermalinks"]?.jsonPrimitive?.content)
+    }
+
+    fun testSeqWhoAmIReturnsAuthContext() = runBlocking {
+        val backend = RecordingBackend()
+        val tool = createToolsProvider(backend).findTool("SeqWhoAmI")
+
+        val result = tool.call(
+            buildJsonObject {
+                put("workspace", JsonPrimitive("production"))
+            },
+        )
+
+        assertEquals("production", backend.capabilityWorkspace)
+        val authContext = result.structuredContent!!["authContext"]!!.jsonObject
+        assertEquals("api_key", authContext["authMode"]?.jsonPrimitive?.content)
+        assertEquals("workspace_override", authContext["credentialSource"]?.jsonPrimitive?.content)
+        assertEquals("production", authContext["resolvedWorkspace"]?.jsonPrimitive?.content)
+        assertEquals("user-1", authContext["resolvedUserId"]?.jsonPrimitive?.content)
+    }
+
+    fun testSeqCapabilitiesReturnsCapabilityChecks() = runBlocking {
+        val backend = RecordingBackend().apply {
+            capabilityReport = capabilityReport.copy(
+                canQueryEvents = true,
+                canResolveCurrentUser = false,
+                canCreatePermalinks = false,
+                notes = listOf("No Seq user identity was resolved for the current credential."),
+            )
+        }
+        val tool = createToolsProvider(backend).findTool("SeqCapabilities")
+
+        val result = tool.call(buildJsonObject {})
+
+        val capabilities = result.structuredContent!!["capabilities"]!!.jsonObject
+        assertEquals("true", capabilities["canQueryEvents"]?.jsonPrimitive?.content)
+        assertEquals("false", capabilities["canResolveCurrentUser"]?.jsonPrimitive?.content)
+        assertEquals("false", capabilities["canCreatePermalinks"]?.jsonPrimitive?.content)
+        assertEquals(
+            "No Seq user identity was resolved for the current credential.",
+            capabilities["notes"]!!.jsonArray.first().jsonPrimitive.content,
+        )
+    }
+
+    fun testSeqCreatePermalinkReturnsNormalizedFallbackWhenUserIdentityMissing() = runBlocking {
+        val backend = RecordingBackend().apply {
+            capabilityReport = capabilityReport.copy(
+                authContext = capabilityReport.authContext.copy(
+                    resolvedUserId = null,
+                    resolvedUsername = null,
+                    resolvedUserDisplayName = null,
+                ),
+                canResolveCurrentUser = false,
+                canCreatePermalinks = false,
+                notes = listOf("Permalink creation requires a Seq user identity; the current credential did not resolve one."),
+            )
+        }
+        val tool = createToolsProvider(backend).findTool("SeqCreatePermalink")
+
+        val result = tool.call(
+            buildJsonObject {
+                put("eventId", JsonPrimitive("event-123"))
+            },
+        )
+
+        assertTrue(result.isError)
+        assertNull(backend.permalinkEventId)
+        assertEquals("event-123", backend.eventLookupId)
+        assertStringContains(
+            result.structuredContent!!["error"]!!.jsonPrimitive.content,
+            "current Seq credential has no user identity",
+        )
+        val fallback = result.structuredContent!!["fallback"]!!.jsonObject
+        assertEquals("event-123", fallback["eventId"]?.jsonPrimitive?.content)
+        assertEquals("2026-04-18T10:15:30Z", fallback["timestamp"]?.jsonPrimitive?.content)
+        assertEquals("""@Id = "event-123"""", fallback["suggestedFilter"]?.jsonPrimitive?.content)
+    }
+
+    fun testSeqCreatePermalinkNormalizesRawServerUserIdFailure() = runBlocking {
+        val backend = RecordingBackend().apply {
+            permalinkException = SeqApiException(
+                message = "Seq API request failed with 400: A valid user id is required",
+                statusCode = 400,
+                seqError = "A valid user id is required",
+            )
+        }
+        val tool = createToolsProvider(backend).findTool("SeqCreatePermalink")
+
+        val result = tool.call(
+            buildJsonObject {
+                put("eventId", JsonPrimitive("event-123"))
+            },
+        )
+
+        assertTrue(result.isError)
+        assertEquals("event-123", backend.permalinkEventId)
+        assertStringContains(
+            result.structuredContent!!["error"]!!.jsonPrimitive.content,
+            "current Seq credential has no user identity",
+        )
     }
 
     fun testToolsProviderRejectsCallsWhenProjectIsDisabled() = runBlocking {
@@ -398,9 +553,12 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
             listOf(
                 "SeqSearch",
                 "SeqQuerySql",
+                "SeqDescribeSqlDialect",
                 "SeqToStrictFilter",
                 "SeqWaitForEvents",
                 "SignalList",
+                "SeqWhoAmI",
+                "SeqCapabilities",
                 "SeqSqlQueryList",
                 "SeqSqlQueryGet",
                 "SeqWorkspaceList",
@@ -480,6 +638,8 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         )
         var sqlQueryRequest: SeqSqlQueryRequest? = null
         var sqlCsvRequest: SeqSqlQueryRequest? = null
+        var sqlQueryException: SeqApiException? = null
+        var sqlCsvException: SeqApiException? = null
         var sqlQueryListOwnerId: String? = null
         var sqlQueryListShared: Boolean? = null
         var sqlQueryGetId: String? = null
@@ -489,9 +649,14 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         var dashboardListOwnerId: String? = null
         var dashboardListShared: Boolean? = null
         var dashboardGetId: String? = null
+        var capabilityWorkspace: String? = null
+        var eventLookupId: String? = null
+        var eventLookupWorkspace: String? = null
+        var eventLookupRender: Boolean? = null
         var permalinkEventId: String? = null
         var permalinkIncludeEvent: Boolean? = null
         var permalinkRenderEvent: Boolean? = null
+        var permalinkException: SeqApiException? = null
         var sqlJsonResult = buildJsonObject {
             put("Columns", buildJsonArray {
                 add(JsonPrimitive("Errors"))
@@ -564,6 +729,37 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
             )
         }
         var dashboardGetResult: kotlinx.serialization.json.JsonObject = dashboardListResult.first().jsonObject
+        var capabilityReport = SeqCapabilityReport(
+            authContext = SeqAuthContext(
+                authMode = "api_key",
+                credentialSource = "workspace_override",
+                resolvedUserId = "user-1",
+                resolvedUsername = "alice",
+                resolvedUserDisplayName = "Alice",
+                resolvedWorkspace = null,
+                serverVersion = "2026.1.0",
+                serverProduct = "Seq",
+                serverInstanceName = "local-seq",
+            ),
+            canQueryEvents = true,
+            canResolveCurrentUser = true,
+            canCreatePermalinks = true,
+            eventsEndpoint = "http://localhost:5341/api/events/scan?count=1&render=true",
+            currentUserEndpoint = "http://localhost:5341/api/users/current",
+            permalinkEndpoint = "http://localhost:5341/api/permalinks",
+            notes = emptyList(),
+        )
+        var eventLookupResult: kotlinx.serialization.json.JsonObject = buildJsonObject {
+            put("Id", JsonPrimitive("event-123"))
+            put("Timestamp", JsonPrimitive("2026-04-18T10:15:30Z"))
+            put("RenderedMessage", JsonPrimitive("Timeout while calling payments"))
+            put(
+                "ResolvedLinks",
+                buildJsonObject {
+                    put("Self", JsonPrimitive("http://localhost:5341/api/events/event-123"))
+                },
+            )
+        }
         var permalinkResult: kotlinx.serialization.json.JsonObject = buildJsonObject {
             put("Id", JsonPrimitive("permalink-1"))
             put("EventId", JsonPrimitive("event-123"))
@@ -618,11 +814,13 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         }
 
         override suspend fun querySql(request: SeqSqlQueryRequest): kotlinx.serialization.json.JsonObject {
+            sqlQueryException?.let { throw it }
             sqlQueryRequest = request
             return sqlJsonResult
         }
 
         override suspend fun querySqlCsv(request: SeqSqlQueryRequest): String {
+            sqlCsvException?.let { throw it }
             sqlCsvRequest = request
             return sqlCsvResult
         }
@@ -660,6 +858,22 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
             return dashboardGetResult
         }
 
+        override suspend fun getCapabilities(workspace: String?): SeqCapabilityReport {
+            capabilityWorkspace = workspace
+            return capabilityReport.copy(
+                authContext = capabilityReport.authContext.copy(
+                    resolvedWorkspace = workspace,
+                ),
+            )
+        }
+
+        override suspend fun getEvent(id: String, workspace: String?, render: Boolean): kotlinx.serialization.json.JsonObject {
+            eventLookupId = id
+            eventLookupWorkspace = workspace
+            eventLookupRender = render
+            return eventLookupResult
+        }
+
         override suspend fun createPermalink(
             eventId: String,
             workspace: String?,
@@ -669,6 +883,7 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
             permalinkEventId = eventId
             permalinkIncludeEvent = includeEvent
             permalinkRenderEvent = renderEvent
+            permalinkException?.let { throw it }
             return permalinkResult
         }
     }

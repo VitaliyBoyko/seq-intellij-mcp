@@ -7,10 +7,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.IOException
@@ -53,6 +55,10 @@ interface SeqMcpBackend {
 
     suspend fun getDashboard(id: String, workspace: String?): JsonObject
 
+    suspend fun getCapabilities(workspace: String? = null): SeqCapabilityReport
+
+    suspend fun getEvent(id: String, workspace: String? = null, render: Boolean = false): JsonObject
+
     suspend fun createPermalink(
         eventId: String,
         workspace: String? = null,
@@ -84,6 +90,10 @@ data class SeqSqlQueryRequest(
 class SeqApiException(
     message: String,
     val statusCode: Int? = null,
+    val seqError: String? = null,
+    val seqSuggestion: String? = null,
+    val seqReasons: List<String> = emptyList(),
+    val responseBody: String? = null,
     cause: Throwable? = null,
 ) : IOException(message, cause)
 
@@ -91,6 +101,29 @@ data class SeqStrictExpressionResult(
     val strictExpression: String,
     val matchedAsText: Boolean,
     val reasonIfMatchedAsText: String? = null,
+)
+
+data class SeqAuthContext(
+    val authMode: String,
+    val credentialSource: String,
+    val resolvedUserId: String? = null,
+    val resolvedUsername: String? = null,
+    val resolvedUserDisplayName: String? = null,
+    val resolvedWorkspace: String? = null,
+    val serverVersion: String? = null,
+    val serverProduct: String? = null,
+    val serverInstanceName: String? = null,
+)
+
+data class SeqCapabilityReport(
+    val authContext: SeqAuthContext,
+    val canQueryEvents: Boolean,
+    val canResolveCurrentUser: Boolean,
+    val canCreatePermalinks: Boolean,
+    val eventsEndpoint: String? = null,
+    val currentUserEndpoint: String? = null,
+    val permalinkEndpoint: String? = null,
+    val notes: List<String> = emptyList(),
 )
 
 @Service(Service.Level.APP)
@@ -280,6 +313,116 @@ class SeqApiService : SeqMcpBackend {
         return getResourceGroupItem("Dashboards", workspace, id)
     }
 
+    override suspend fun getCapabilities(workspace: String?): SeqCapabilityReport {
+        return withContext(Dispatchers.IO) {
+            val credentialContext = resolveCredentialContext(workspace)
+            val requestedWorkspace = workspace?.takeIf { it.isNotBlank() }
+            val notes = mutableListOf<String>()
+            val root = getApiRoot(workspace)
+
+            if (requestedWorkspace != null && credentialContext.credentialSource == "default_api_key") {
+                notes += "No workspace-specific API key was found for `$requestedWorkspace`; using the default API key."
+            } else if (requestedWorkspace != null && credentialContext.credentialSource == "none") {
+                notes += "No workspace-specific API key was found for `$requestedWorkspace`, and no default API key is configured."
+            }
+
+            val eventsGroup = loadResourceGroupOrNull("Events", workspace, root, notes)
+            val usersGroup = loadResourceGroupOrNull("Users", workspace, root, notes)
+            val permalinksGroup = loadResourceGroupOrNull("Permalinks", workspace, root, notes)
+
+            val currentUser = usersGroup?.let { group ->
+                runCatching { getCurrentUser(group, workspace) }.getOrElse { error ->
+                    notes += "Current user lookup failed: ${error.message ?: "unknown error"}"
+                    null
+                }
+            }
+
+            if (currentUser == null) {
+                notes += "No Seq user identity was resolved for the current credential."
+            }
+
+            val canQueryEvents = runCatching {
+                searchEvents(
+                    SeqSearchRequest(
+                        filter = "",
+                        count = 1,
+                        workspace = workspace,
+                        timeoutSeconds = 5,
+                    ),
+                )
+                true
+            }.getOrElse { error ->
+                notes += "Event query check failed: ${error.message ?: "unknown error"}"
+                false
+            }
+
+            val canResolveCurrentUser = currentUser?.stringValue("Id") != null
+            val canCreatePermalinks = permalinksGroup != null && canResolveCurrentUser
+
+            if (!canCreatePermalinks && permalinksGroup != null && !canResolveCurrentUser) {
+                notes += "Permalink creation requires a Seq user identity; the current credential did not resolve one."
+            }
+
+            SeqCapabilityReport(
+                authContext = SeqAuthContext(
+                    authMode = credentialContext.authMode,
+                    credentialSource = credentialContext.credentialSource,
+                    resolvedUserId = currentUser?.stringValue("Id"),
+                    resolvedUsername = currentUser?.stringValue("Username"),
+                    resolvedUserDisplayName = currentUser?.stringValue("DisplayName"),
+                    resolvedWorkspace = requestedWorkspace,
+                    serverVersion = root.stringValue("Version"),
+                    serverProduct = root.stringValue("Product"),
+                    serverInstanceName = root.stringValue("InstanceName"),
+                ),
+                canQueryEvents = canQueryEvents,
+                canResolveCurrentUser = canResolveCurrentUser,
+                canCreatePermalinks = canCreatePermalinks,
+                eventsEndpoint = eventsGroup?.let { group ->
+                    resolvedLinkOrNull(
+                        group,
+                        "Scan",
+                        mapOf(
+                            "count" to 1,
+                            "render" to true,
+                        ),
+                    )
+                },
+                currentUserEndpoint = usersGroup?.let { resolvedLinkOrNull(it, "Current") },
+                permalinkEndpoint = permalinksGroup?.let { resolvedLinkOrNull(it, "Items") },
+                notes = notes.distinct(),
+            )
+        }
+    }
+
+    private fun resolvedLinkOrNull(
+        entity: JsonObject,
+        linkName: String,
+        parameters: Map<String, Any?> = emptyMap(),
+    ): String? {
+        return runCatching {
+            resolveResourceLink(
+                entity,
+                linkName,
+                parameters,
+            ).toString()
+        }.getOrNull()
+    }
+
+    override suspend fun getEvent(id: String, workspace: String?, render: Boolean): JsonObject {
+        require(id.isNotBlank()) { "id must not be blank" }
+        return getResourceGroupItem(
+            groupName = "Events",
+            workspace = workspace,
+            id = id,
+            additionalParameters = buildMap {
+                if (render) {
+                    put("render", true)
+                }
+            },
+        )
+    }
+
     override suspend fun createPermalink(
         eventId: String,
         workspace: String?,
@@ -364,7 +507,7 @@ class SeqApiService : SeqMcpBackend {
         val builder = httpClient.newWebSocketBuilder()
             .connectTimeout(Duration.ofSeconds(5))
 
-        currentApiKey(workspace)?.let { builder.header(SEQ_API_KEY_HEADER, it) }
+        resolveCredentialContext(workspace).apiKey?.let { builder.header(SEQ_API_KEY_HEADER, it) }
 
         val webSocket = builder.buildAsync(uri, listener).join()
         val elements = ArrayList<JsonElement>(maxMessages)
@@ -393,9 +536,13 @@ class SeqApiService : SeqMcpBackend {
         return JsonArray(elements)
     }
 
-    private fun getResourceGroup(groupName: String, workspace: String?): JsonObject {
-        val root = parseJson(sendRequest(resolveAgainstBase("api"), workspace).body()).jsonObject
-        return parseJson(sendRequest(resolveResourceLink(root, "${groupName}Resources"), workspace).body()).jsonObject
+    private fun getApiRoot(workspace: String?): JsonObject {
+        return parseJson(sendRequest(resolveAgainstBase("api"), workspace).body()).jsonObject
+    }
+
+    private fun getResourceGroup(groupName: String, workspace: String?, root: JsonObject? = null): JsonObject {
+        val resolvedRoot = root ?: getApiRoot(workspace)
+        return parseJson(sendRequest(resolveResourceLink(resolvedRoot, "${groupName}Resources"), workspace).body()).jsonObject
     }
 
     private suspend fun listResourceGroupItems(
@@ -461,7 +608,7 @@ class SeqApiService : SeqMcpBackend {
         val request = HttpRequest.newBuilder(uri)
             .header("Accept", "application/json")
             .apply {
-                currentApiKey(workspace)?.let { header(SEQ_API_KEY_HEADER, it) }
+                resolveCredentialContext(workspace).apiKey?.let { header(SEQ_API_KEY_HEADER, it) }
             }
             .GET()
             .build()
@@ -489,7 +636,7 @@ class SeqApiService : SeqMcpBackend {
             .header("Accept", accept)
             .header("Content-Type", "application/json")
             .apply {
-                currentApiKey(workspace)?.let { header(SEQ_API_KEY_HEADER, it) }
+                resolveCredentialContext(workspace).apiKey?.let { header(SEQ_API_KEY_HEADER, it) }
             }
             .method(method, HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8))
             .build()
@@ -505,14 +652,26 @@ class SeqApiService : SeqMcpBackend {
 
         val payload = runCatching { parseJson(response.body()).jsonObject }.getOrNull()
         val error = payload?.get("Error")?.jsonPrimitive?.contentOrNull
+        val suggestion = payload?.get("Suggestion")?.jsonPrimitive?.contentOrNull
+        val reasons = payload?.get("Reasons")?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
         val suffix = error?.let { ": $it" }.orEmpty()
         throw SeqApiException(
             message = "Seq API request failed with ${response.statusCode()}$suffix",
             statusCode = response.statusCode(),
+            seqError = error,
+            seqSuggestion = suggestion,
+            seqReasons = reasons,
+            responseBody = response.body(),
         )
     }
 
-    private fun parseJson(payload: String): JsonElement = json.parseToJsonElement(payload)
+    private fun parseJson(payload: String): JsonElement {
+        return if (payload.isBlank()) {
+            JsonNull
+        } else {
+            json.parseToJsonElement(payload)
+        }
+    }
 
     private fun currentServerUri(): URI {
         val configured = settings.seqServerUrl.trim()
@@ -521,9 +680,55 @@ class SeqApiService : SeqMcpBackend {
         return URI(normalized)
     }
 
-    private fun currentApiKey(workspaceId: String?): String? {
-        return settings.getApiKey(workspaceId)?.takeIf { it.isNotBlank() }
-            ?: settings.getApiKey()?.takeIf { it.isNotBlank() }
+    private fun resolveCredentialContext(workspaceId: String?): SeqCredentialContext {
+        val normalizedWorkspaceId = workspaceId?.takeIf { it.isNotBlank() }
+        val workspaceApiKey = normalizedWorkspaceId
+            ?.let(settings::getApiKey)
+            ?.takeIf { it.isNotBlank() }
+        val defaultApiKey = settings.getApiKey()?.takeIf { it.isNotBlank() }
+
+        return when {
+            workspaceApiKey != null -> SeqCredentialContext(
+                workspaceId = normalizedWorkspaceId,
+                apiKey = workspaceApiKey,
+                authMode = "api_key",
+                credentialSource = "workspace_override",
+            )
+
+            defaultApiKey != null -> SeqCredentialContext(
+                workspaceId = normalizedWorkspaceId,
+                apiKey = defaultApiKey,
+                authMode = "api_key",
+                credentialSource = "default_api_key",
+            )
+
+            else -> SeqCredentialContext(
+                workspaceId = normalizedWorkspaceId,
+                apiKey = null,
+                authMode = "anonymous",
+                credentialSource = "none",
+            )
+        }
+    }
+
+    private fun loadResourceGroupOrNull(
+        groupName: String,
+        workspace: String?,
+        root: JsonObject,
+        notes: MutableList<String>,
+    ): JsonObject? {
+        return runCatching { getResourceGroup(groupName, workspace, root) }.getOrElse { error ->
+            notes += "$groupName resource group unavailable: ${error.message ?: "unknown error"}"
+            null
+        }
+    }
+
+    private fun getCurrentUser(usersGroup: JsonObject, workspace: String?): JsonObject? {
+        val response = sendRequest(resolveResourceLink(usersGroup, "Current"), workspace)
+        return when (val payload = parseJson(response.body())) {
+            is JsonObject -> withResolvedLinks(payload)
+            else -> null
+        }
     }
 
     private fun withResolvedLinks(entity: JsonObject): JsonObject {
@@ -588,6 +793,15 @@ class SeqApiService : SeqMcpBackend {
         fun getInstance(): SeqApiService = service<SeqApiService>()
     }
 }
+
+private data class SeqCredentialContext(
+    val workspaceId: String?,
+    val apiKey: String?,
+    val authMode: String,
+    val credentialSource: String,
+)
+
+private fun JsonObject.stringValue(name: String): String? = this[name]?.jsonPrimitive?.contentOrNull
 
 internal fun toWebSocketUri(uri: URI): URI {
     val nextScheme = when (uri.scheme?.lowercase()) {

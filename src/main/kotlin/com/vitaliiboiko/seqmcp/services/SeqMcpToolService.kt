@@ -18,6 +18,10 @@ class SeqMcpToolService {
                 description = "Execute Seq SQL queries and return structured rows or CSV",
             ),
             SeqMcpToolDefinition(
+                name = "SeqDescribeSqlDialect",
+                description = "Describe the Seq SQL surface with examples and common pitfalls",
+            ),
+            SeqMcpToolDefinition(
                 name = "SeqToStrictFilter",
                 description = "Convert a loose search query into strict Seq filter syntax for Seq, a structured log server",
             ),
@@ -28,6 +32,14 @@ class SeqMcpToolService {
             SeqMcpToolDefinition(
                 name = "SignalList",
                 description = "List Seq signals, which are saved event queries and filters in the Seq server",
+            ),
+            SeqMcpToolDefinition(
+                name = "SeqWhoAmI",
+                description = "Resolve the current Seq auth context and user identity",
+            ),
+            SeqMcpToolDefinition(
+                name = "SeqCapabilities",
+                description = "Probe Seq query, identity, and permalink capabilities",
             ),
             SeqMcpToolDefinition(
                 name = "SeqSqlQueryList",

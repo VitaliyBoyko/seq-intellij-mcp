@@ -11,12 +11,15 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.vitaliiboiko.seqmcp.services.SeqApiService
+import com.vitaliiboiko.seqmcp.services.SeqAuthContext
+import com.vitaliiboiko.seqmcp.services.SeqCapabilityReport
 import com.vitaliiboiko.seqmcp.services.SeqApiException
 import com.vitaliiboiko.seqmcp.services.SeqMcpBackend
 import com.vitaliiboiko.seqmcp.services.SeqMcpProjectSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqSearchRequest
 import com.vitaliiboiko.seqmcp.services.SeqSqlQueryRequest
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -46,9 +49,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
         return listOf(
             seqSearchTool(),
             seqQuerySqlTool(),
+            seqDescribeSqlDialectTool(),
             seqToStrictFilterTool(),
             seqWaitForEventsTool(),
             signalListTool(),
+            seqWhoAmITool(),
+            seqCapabilitiesTool(),
             seqSqlQueryListTool(),
             seqSqlQueryGetTool(),
             seqWorkspaceListTool(),
@@ -93,9 +99,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                             minimum = 1,
                             maximum = 300,
                         ),
-                        "workspace" to stringSchema(
-                            "Optional workspace key used for future workspace-specific credentials.",
-                        ),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = seqSearchOutputSchema(),
@@ -136,9 +140,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                             minimum = 1,
                             maximum = 100,
                         ),
-                        "workspace" to stringSchema(
-                            "Optional workspace key used for future workspace-specific credentials.",
-                        ),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = eventsOutputSchema("capturedEvents"),
@@ -171,9 +173,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                         "fuzzy" to stringSchema(
                             "A relaxed search query for Seq, such as error, timeout, or @Level = 'Error', to convert into strict Seq syntax.",
                         ),
-                        "workspace" to stringSchema(
-                            "Optional workspace key used for future workspace-specific credentials.",
-                        ),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
@@ -208,14 +208,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 description = "List Seq signals, which are saved event queries and filters in the Seq server",
                 inputSchema = inputSchema(
                     properties = mapOf(
-                        "workspace" to stringSchema(
-                            "Optional workspace key used for future workspace-specific credentials.",
-                        ),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "signals" to arraySchema("List of Seq signals, which are saved event queries and filters."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -232,16 +230,91 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
         }
     }
 
+    private fun seqWhoAmITool(): McpTool {
+        return JsonBackedTool(
+            descriptor = descriptor(
+                name = "SeqWhoAmI",
+                description = "Resolve the current Seq auth context and user identity for the configured credential",
+                inputSchema = inputSchema(
+                    properties = mapOf(
+                        "workspace" to workspaceInputSchema(),
+                    ),
+                ),
+                outputSchema = buildSchema(
+                    "authContext" to objectSchema("Resolved Seq authentication context and current user metadata."),
+                    "capabilities" to objectSchema("Capability checks performed against the current Seq credential."),
+                    "workspace" to workspaceOutputSchema(),
+                ),
+            ),
+        ) { arguments ->
+            ensureEnabledProject(enabledProjectResolver)
+            val workspace = optionalString(arguments, "workspace")
+            val capabilityReport = backend.getCapabilities(workspace)
+            val message = capabilityReport.authContext.resolvedUserId?.let { userId ->
+                "SeqWhoAmI resolved Seq user `$userId`."
+            } ?: "SeqWhoAmI could not resolve a Seq user identity for the current credential."
+
+            success(
+                text = message,
+                structured = buildJsonObject {
+                    put("authContext", serializeAuthContext(capabilityReport.authContext))
+                    put("capabilities", serializeCapabilityReport(capabilityReport))
+                    putNullable("workspace", workspace)
+                },
+            )
+        }
+    }
+
+    private fun seqCapabilitiesTool(): McpTool {
+        return JsonBackedTool(
+            descriptor = descriptor(
+                name = "SeqCapabilities",
+                description = "Probe Seq query, identity, and permalink capabilities for the configured credential",
+                inputSchema = inputSchema(
+                    properties = mapOf(
+                        "workspace" to workspaceInputSchema(),
+                    ),
+                ),
+                outputSchema = buildSchema(
+                    "authContext" to objectSchema("Resolved Seq authentication context and current user metadata."),
+                    "capabilities" to objectSchema("Capability checks performed against the current Seq credential."),
+                    "workspace" to workspaceOutputSchema(),
+                ),
+            ),
+        ) { arguments ->
+            ensureEnabledProject(enabledProjectResolver)
+            val workspace = optionalString(arguments, "workspace")
+            val capabilityReport = backend.getCapabilities(workspace)
+
+            success(
+                text = "SeqCapabilities checked event query, identity, and permalink support.",
+                structured = buildJsonObject {
+                    put("authContext", serializeAuthContext(capabilityReport.authContext))
+                    put("capabilities", serializeCapabilityReport(capabilityReport))
+                    putNullable("workspace", workspace)
+                },
+            )
+        }
+    }
+
     private fun seqQuerySqlTool(): McpTool {
         return JsonBackedTool(
             descriptor = descriptor(
                 name = "SeqQuerySql",
-                description = "Execute a Seq SQL query and return either structured rows or CSV output",
+                description = "Execute a Seq SQL query and return either structured rows or CSV output. Seq event queries read from `stream`, use `limit` instead of `top`, and should use `@Message like '%text%' ci` or SeqSearch for message text.",
                 inputSchema = inputSchema(
                     required = setOf("query"),
                     properties = mapOf(
                         "query" to stringSchema(
-                            "A Seq SQL query to execute, for example select count(*) as Errors from stream where @Level = 'Error'.",
+                            """
+                            A Seq SQL query to execute.
+                            Working examples:
+                            select count(*) as Events from stream
+                            select @Timestamp, @Level, @Message from stream where @Level = 'Error' order by @Timestamp desc limit 50
+                            select count(*) as Errors from stream where @Level = 'Error'
+                            select percentile(Elapsed, 99) as P99 from stream group by RequestPath order by P99 desc limit 20
+                            Use `from stream` as the source for event queries. Use `limit`, not `top`. For message text search in SQL, use `@Message like '%timeout%' ci`; for exploratory text search use SeqSearch.
+                            """.trimIndent(),
                         ),
                         "rangeStartUtc" to stringSchema(
                             "Optional inclusive start timestamp in ISO-8601 UTC for the query time window.",
@@ -252,9 +325,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                         "signalId" to stringSchema(
                             "Optional id of a Seq signal used to scope the SQL query.",
                         ),
-                        "workspace" to stringSchema(
-                            "Optional workspace key used for future workspace-specific credentials.",
-                        ),
+                        "workspace" to workspaceInputSchema(),
                         "timeoutSeconds" to intSchema(
                             description = "Optional SQL query timeout in seconds.",
                             minimum = 1,
@@ -276,42 +347,83 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
             require(format == "json" || format == "csv") { "format must be either json or csv" }
 
             if (format == "csv") {
-                val csv = backend.querySqlCsv(request)
-                success(
-                    text = "SeqQuerySql returned CSV output.",
-                    structured = buildJsonObject {
-                        put("format", JsonPrimitive("csv"))
-                        put("query", JsonPrimitive(request.query))
-                        put("csv", JsonPrimitive(csv))
-                        putNullable("workspace", request.workspace)
-                        putNullable("signalId", request.signalId)
-                    },
-                )
-            } else {
-                val result = backend.querySql(request)
-                result["Error"]?.jsonPrimitive?.contentOrNull?.let { error ->
-                    throw IllegalArgumentException(buildSeqSqlErrorMessage(result, error))
+                val csvResult = runCatching { backend.querySqlCsv(request) }
+                val error = csvResult.exceptionOrNull() as? SeqApiException
+                if (error != null) {
+                    seqSqlFailureResult(request, error, format = "csv")
+                } else {
+                    val csv = csvResult.getOrThrow()
+                    success(
+                        text = "SeqQuerySql returned CSV output.",
+                        structured = buildJsonObject {
+                            put("format", JsonPrimitive("csv"))
+                            put("query", JsonPrimitive(request.query))
+                            put("csv", JsonPrimitive(csv))
+                            putNullable("workspace", request.workspace)
+                            putNullable("signalId", request.signalId)
+                        },
+                    )
                 }
-
-                success(
-                    text = "SeqQuerySql returned ${estimateQueryRowCount(result)} row(s).",
-                    structured = buildJsonObject {
-                        put("format", JsonPrimitive("json"))
-                        put("query", JsonPrimitive(request.query))
-                        put("columns", result["Columns"] ?: JsonArray(emptyList()))
-                        result["Rows"]?.let { put("rows", it) }
-                        result["Slices"]?.let { put("slices", it) }
-                        result["Series"]?.let { put("series", it) }
-                        result["Variables"]?.let { put("variables", it) }
-                        result["Statistics"]?.let { put("statistics", it) }
-                        result["Suggestion"]?.let { put("suggestion", it) }
-                        result["Reasons"]?.let { put("reasons", it) }
-                        put("rowCount", JsonPrimitive(estimateQueryRowCount(result)))
-                        putNullable("workspace", request.workspace)
-                        putNullable("signalId", request.signalId)
-                    },
-                )
+            } else {
+                val queryResult = runCatching { backend.querySql(request) }
+                val error = queryResult.exceptionOrNull() as? SeqApiException
+                if (error != null) {
+                    seqSqlFailureResult(request, error, format = "json")
+                } else {
+                    val result = queryResult.getOrThrow()
+                    result["Error"]?.jsonPrimitive?.contentOrNull?.let { errorMessage ->
+                        seqSqlFailureResult(
+                            request = request,
+                            error = buildSeqSqlErrorMessage(result, errorMessage),
+                            suggestion = result["Suggestion"]?.jsonPrimitive?.contentOrNull,
+                            reasons = result["Reasons"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList(),
+                            format = "json",
+                        )
+                    } ?: success(
+                        text = "SeqQuerySql returned ${estimateQueryRowCount(result)} row(s).",
+                        structured = buildJsonObject {
+                            put("format", JsonPrimitive("json"))
+                            put("query", JsonPrimitive(request.query))
+                            put("columns", result["Columns"] ?: JsonArray(emptyList()))
+                            result["Rows"]?.let { put("rows", it) }
+                            result["Slices"]?.let { put("slices", it) }
+                            result["Series"]?.let { put("series", it) }
+                            result["Variables"]?.let { put("variables", it) }
+                            result["Statistics"]?.let { put("statistics", it) }
+                            result["Suggestion"]?.let { put("suggestion", it) }
+                            result["Reasons"]?.let { put("reasons", it) }
+                            put("rowCount", JsonPrimitive(estimateQueryRowCount(result)))
+                            putNullable("workspace", request.workspace)
+                            putNullable("signalId", request.signalId)
+                        },
+                    )
+                }
             }
+        }
+    }
+
+    private fun seqDescribeSqlDialectTool(): McpTool {
+        return JsonBackedTool(
+            descriptor = descriptor(
+                name = "SeqDescribeSqlDialect",
+                description = "Describe the Seq SQL surface accepted by SeqQuerySql, with working examples and common pitfalls",
+                inputSchema = inputSchema(properties = emptyMap()),
+                outputSchema = buildSchema(
+                    "dialect" to objectSchema("Rules and common gotchas for Seq SQL queries."),
+                    "exampleQueries" to arraySchema("Working Seq SQL query examples."),
+                    "messageTextSearch" to objectSchema("Guidance for message text search in SQL vs SeqSearch."),
+                ),
+            ),
+        ) {
+            ensureEnabledProject(enabledProjectResolver)
+            success(
+                text = "SeqDescribeSqlDialect returned the Seq SQL contract and example queries.",
+                structured = buildJsonObject {
+                    put("dialect", buildSeqSqlDialectContract())
+                    put("exampleQueries", buildSeqSqlExamples())
+                    put("messageTextSearch", buildSeqSqlMessageSearchGuidance())
+                },
+            )
         }
     }
 
@@ -324,12 +436,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                     properties = mapOf(
                         "ownerId" to stringSchema("Optional owner id to filter personal SQL queries."),
                         "shared" to booleanSchema("Include shared SQL queries. Defaults to true."),
-                        "workspace" to stringSchema("Optional workspace key used for future workspace-specific credentials."),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "queries" to arraySchema("List of saved Seq SQL queries."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -359,12 +471,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                     required = setOf("id"),
                     properties = mapOf(
                         "id" to stringSchema("The id of the saved Seq SQL query."),
-                        "workspace" to stringSchema("Optional workspace key used for future workspace-specific credentials."),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "query" to objectSchema("Saved Seq SQL query metadata and SQL text."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -391,12 +503,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                     properties = mapOf(
                         "ownerId" to stringSchema("Optional owner id to filter personal workspaces."),
                         "shared" to booleanSchema("Include shared workspaces. Defaults to true."),
-                        "workspace" to stringSchema("Optional workspace key used for future workspace-specific credentials."),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "workspaces" to arraySchema("List of Seq workspaces."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -426,12 +538,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                     required = setOf("id"),
                     properties = mapOf(
                         "id" to stringSchema("The id of the Seq workspace."),
-                        "workspace" to stringSchema("Optional workspace key used for future workspace-specific credentials."),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "workspaceEntity" to objectSchema("Detailed Seq workspace metadata and included content ids."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -458,12 +570,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                     properties = mapOf(
                         "ownerId" to stringSchema("Optional owner id to filter personal dashboards."),
                         "shared" to booleanSchema("Include shared dashboards. Defaults to true."),
-                        "workspace" to stringSchema("Optional workspace key used for future workspace-specific credentials."),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "dashboards" to arraySchema("List of Seq dashboards."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -493,12 +605,12 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                     required = setOf("id"),
                     properties = mapOf(
                         "id" to stringSchema("The id of the Seq dashboard."),
-                        "workspace" to stringSchema("Optional workspace key used for future workspace-specific credentials."),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "dashboard" to objectSchema("Detailed Seq dashboard metadata and chart summaries."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -527,12 +639,15 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                         "eventId" to stringSchema("The Seq event id to permalink."),
                         "includeEvent" to booleanSchema("If true, include the event payload in the returned permalink entity."),
                         "renderEvent" to booleanSchema("If true and includeEvent is also true, render the event message."),
-                        "workspace" to stringSchema("Optional workspace key used for future workspace-specific credentials."),
+                        "workspace" to workspaceInputSchema(),
                     ),
                 ),
                 outputSchema = buildSchema(
                     "permalink" to objectSchema("The created Seq permalink metadata."),
-                    "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+                    "authContext" to objectSchema("Resolved Seq authentication context and current user metadata."),
+                    "capabilities" to objectSchema("Capability checks performed against the current Seq credential."),
+                    "fallback" to objectSchema("Fallback event metadata returned when Seq permalink creation is unavailable."),
+                    "workspace" to workspaceOutputSchema(),
                 ),
             ),
         ) { arguments ->
@@ -542,19 +657,58 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
             val renderEvent = optionalBoolean(arguments, "renderEvent") ?: false
             require(!renderEvent || includeEvent) { "renderEvent can only be true when includeEvent is true" }
             val workspace = optionalString(arguments, "workspace")
-            val permalink = backend.createPermalink(
-                eventId = eventId,
-                workspace = workspace,
-                includeEvent = includeEvent,
-                renderEvent = renderEvent,
-            )
-            success(
-                text = "SeqCreatePermalink created a permalink for event `$eventId`.",
-                structured = buildJsonObject {
-                    put("permalink", summarizePermalink(permalink))
-                    putNullable("workspace", workspace)
-                },
-            )
+            val capabilityReport = backend.getCapabilities(workspace)
+
+            if (!capabilityReport.canCreatePermalinks) {
+                permalinkFailureResult(
+                    message = buildPermalinkFailureMessage(capabilityReport),
+                    workspace = workspace,
+                    capabilityReport = capabilityReport,
+                    fallback = buildPermalinkFallback(
+                        backend = backend,
+                        eventId = eventId,
+                        workspace = workspace,
+                        includeEvent = includeEvent,
+                        renderEvent = renderEvent,
+                    ),
+                )
+            } else {
+                val permalinkResult = runCatching {
+                    backend.createPermalink(
+                        eventId = eventId,
+                        workspace = workspace,
+                        includeEvent = includeEvent,
+                        renderEvent = renderEvent,
+                    )
+                }
+
+                val error = permalinkResult.exceptionOrNull() as? SeqApiException
+                if (error != null) {
+                    permalinkFailureResult(
+                        message = buildPermalinkFailureMessage(capabilityReport, error),
+                        workspace = workspace,
+                        capabilityReport = capabilityReport,
+                        fallback = buildPermalinkFallback(
+                            backend = backend,
+                            eventId = eventId,
+                            workspace = workspace,
+                            includeEvent = includeEvent,
+                            renderEvent = renderEvent,
+                        ),
+                    )
+                } else {
+                    val permalink = permalinkResult.getOrThrow()
+                    success(
+                        text = "SeqCreatePermalink created a permalink for event `$eventId`.",
+                        structured = buildJsonObject {
+                            put("permalink", summarizePermalink(permalink))
+                            put("authContext", serializeAuthContext(capabilityReport.authContext))
+                            put("capabilities", serializeCapabilityReport(capabilityReport))
+                            putNullable("workspace", workspace)
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -598,18 +752,23 @@ private fun inputSchema(
     properties: Map<String, JsonElement>,
 ): McpToolSchema = buildSchema(*properties.entries.map { it.key to it.value }.toTypedArray(), required = required)
 
+private const val WORKSPACE_PARAMETER_DESCRIPTION =
+    "Optional workspace credential key. If it matches a configured workspace API key override, that credential is used; otherwise the default Seq API key is used."
+
+private const val WORKSPACE_OUTPUT_DESCRIPTION = "Workspace credential key echoed back in the response."
+
 private fun eventsOutputSchema(eventsProperty: String): McpToolSchema {
     return buildSchema(
         eventsProperty to arraySchema("Matching Seq events."),
         "capturedCount" to intSchema("Number of captured events.", minimum = 0),
-        "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+        "workspace" to workspaceOutputSchema(),
     )
 }
 
 private fun seqSearchOutputSchema(): McpToolSchema {
     return buildSchema(
         "events" to arraySchema("Matching Seq events."),
-        "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+        "workspace" to workspaceOutputSchema(),
         "afterId" to nullableStringSchema("Pagination cursor echoed back in the response."),
     )
 }
@@ -626,10 +785,14 @@ private fun seqQuerySqlOutputSchema(): McpToolSchema {
         "statistics" to objectSchema("Execution statistics reported by Seq."),
         "csv" to nullableStringSchema("CSV output when format=csv."),
         "rowCount" to intSchema("Estimated number of rows returned.", minimum = 0),
-        "workspace" to nullableStringSchema("Workspace key echoed back in the response."),
+        "workspace" to workspaceOutputSchema(),
         "signalId" to nullableStringSchema("Signal id echoed back in the response."),
         "suggestion" to nullableStringSchema("Query suggestion returned by Seq, if any."),
-        "reasons" to arraySchema("Additional reasons returned by Seq when a query fails."),
+        "reasons" to stringArraySchema("Additional reasons returned by Seq when a query fails."),
+        "error" to nullableStringSchema("Normalized SQL execution error, if the query failed."),
+        "dialect" to objectSchema("Seq SQL rules and common gotchas relevant to the query."),
+        "exampleQueries" to arraySchema("Working Seq SQL query examples relevant to the query."),
+        "messageTextSearch" to objectSchema("Guidance for text search in Seq SQL vs SeqSearch."),
     )
 }
 
@@ -661,6 +824,10 @@ private fun nullableStringSchema(description: String): JsonElement {
         put("description", JsonPrimitive(description))
     }
 }
+
+private fun workspaceInputSchema(): JsonElement = stringSchema(WORKSPACE_PARAMETER_DESCRIPTION)
+
+private fun workspaceOutputSchema(): JsonElement = nullableStringSchema(WORKSPACE_OUTPUT_DESCRIPTION)
 
 private fun intSchema(
     description: String,
@@ -697,6 +864,19 @@ private fun arraySchema(description: String): JsonElement {
     }
 }
 
+private fun stringArraySchema(description: String): JsonElement {
+    return buildJsonObject {
+        put("type", JsonPrimitive("array"))
+        put("description", JsonPrimitive(description))
+        put(
+            "items",
+            buildJsonObject {
+                put("type", JsonPrimitive("string"))
+            },
+        )
+    }
+}
+
 private fun objectSchema(description: String): JsonElement {
     return buildJsonObject {
         put("type", JsonPrimitive("object"))
@@ -706,6 +886,53 @@ private fun objectSchema(description: String): JsonElement {
 
 private fun success(text: String, structured: JsonObject): McpToolCallResult {
     return McpToolCallResult.Companion.text(text, structured)
+}
+
+private fun failure(text: String, structured: JsonObject): McpToolCallResult {
+    return McpToolCallResult.Companion.error(text, structured)
+}
+
+private fun seqSqlFailureResult(
+    request: SeqSqlQueryRequest,
+    error: SeqApiException,
+    format: String,
+): McpToolCallResult {
+    return seqSqlFailureResult(
+        request = request,
+        error = buildSeqSqlErrorMessage(error),
+        suggestion = error.seqSuggestion,
+        reasons = error.seqReasons,
+        format = format,
+    )
+}
+
+private fun seqSqlFailureResult(
+    request: SeqSqlQueryRequest,
+    error: String,
+    suggestion: String?,
+    reasons: List<String>,
+    format: String,
+): McpToolCallResult {
+    return failure(
+        text = error,
+        structured = buildJsonObject {
+            put("error", JsonPrimitive(error))
+            put("format", JsonPrimitive(format))
+            put("query", JsonPrimitive(request.query))
+            putNullable("workspace", request.workspace)
+            putNullable("signalId", request.signalId)
+            putNullable("suggestion", suggestion)
+            put(
+                "reasons",
+                buildJsonArray {
+                    reasons.forEach { reason -> add(JsonPrimitive(reason)) }
+                },
+            )
+            put("dialect", buildSeqSqlDialectContract())
+            put("exampleQueries", buildSeqSqlExamples())
+            put("messageTextSearch", buildSeqSqlMessageSearchGuidance())
+        },
+    )
 }
 
 private fun requiredString(arguments: JsonObject, name: String): String {
@@ -724,6 +951,117 @@ private fun optionalInt(arguments: JsonObject, name: String): Int? {
 private fun optionalBoolean(arguments: JsonObject, name: String): Boolean? {
     return arguments[name]?.jsonPrimitive?.booleanOrNull
         ?: arguments[name]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
+}
+
+private fun serializeAuthContext(authContext: SeqAuthContext): JsonObject {
+    return buildJsonObject {
+        put("authMode", JsonPrimitive(authContext.authMode))
+        put("credentialSource", JsonPrimitive(authContext.credentialSource))
+        putNullable("resolvedUserId", authContext.resolvedUserId)
+        putNullable("resolvedUsername", authContext.resolvedUsername)
+        putNullable("resolvedUserDisplayName", authContext.resolvedUserDisplayName)
+        putNullable("resolvedWorkspace", authContext.resolvedWorkspace)
+        putNullable("serverVersion", authContext.serverVersion)
+        putNullable("serverProduct", authContext.serverProduct)
+        putNullable("serverInstanceName", authContext.serverInstanceName)
+    }
+}
+
+private fun serializeCapabilityReport(report: SeqCapabilityReport): JsonObject {
+    return buildJsonObject {
+        put("canQueryEvents", JsonPrimitive(report.canQueryEvents))
+        put("canResolveCurrentUser", JsonPrimitive(report.canResolveCurrentUser))
+        put("canCreatePermalinks", JsonPrimitive(report.canCreatePermalinks))
+        putNullable("eventsEndpoint", report.eventsEndpoint)
+        putNullable("currentUserEndpoint", report.currentUserEndpoint)
+        putNullable("permalinkEndpoint", report.permalinkEndpoint)
+        put(
+            "notes",
+            buildJsonArray {
+                report.notes.forEach { note -> add(JsonPrimitive(note)) }
+            },
+        )
+    }
+}
+
+private fun buildPermalinkFailureMessage(
+    capabilityReport: SeqCapabilityReport,
+    error: SeqApiException? = null,
+): String {
+    val rawMessage = error?.seqError?.takeIf { it.isNotBlank() }
+        ?: error?.message?.takeIf { it.isNotBlank() }
+    val missingUserContext = !capabilityReport.canResolveCurrentUser ||
+        rawMessage?.contains("valid user id", ignoreCase = true) == true
+
+    return when {
+        missingUserContext -> {
+            "Permalink creation is unavailable: current Seq credential has no user identity. Search/query work, but permalink APIs require a user-scoped session or compatible API key."
+        }
+
+        rawMessage != null -> "Permalink creation failed: $rawMessage"
+        else -> "Permalink creation is unavailable: the current Seq credential did not pass the permalink capability check."
+    }
+}
+
+private suspend fun buildPermalinkFallback(
+    backend: SeqMcpBackend,
+    eventId: String,
+    workspace: String?,
+    includeEvent: Boolean,
+    renderEvent: Boolean = false,
+): JsonObject {
+    val event = runCatching {
+        backend.getEvent(
+            id = eventId,
+            workspace = workspace,
+            render = includeEvent || renderEvent,
+        )
+    }.getOrNull()
+
+    return buildJsonObject {
+        put("eventId", JsonPrimitive(eventId))
+        putNullable("timestamp", event?.stringValue("Timestamp"))
+        put("suggestedFilter", JsonPrimitive(buildEventIdFilter(eventId)))
+        putNullable(
+            "eventApiUrl",
+            event?.get("ResolvedLinks")
+                ?.jsonObject
+                ?.get("Self")
+                ?.jsonPrimitive
+                ?.contentOrNull,
+        )
+        putNullable(
+            "renderedMessage",
+            event?.get("RenderedMessage")
+                ?.jsonPrimitive
+                ?.contentOrNull,
+        )
+        if (includeEvent && event != null) {
+            put("event", event)
+        }
+    }
+}
+
+private fun permalinkFailureResult(
+    message: String,
+    workspace: String?,
+    capabilityReport: SeqCapabilityReport,
+    fallback: JsonObject,
+): McpToolCallResult {
+    return failure(
+        text = message,
+        structured = buildJsonObject {
+            put("error", JsonPrimitive(message))
+            put("authContext", serializeAuthContext(capabilityReport.authContext))
+            put("capabilities", serializeCapabilityReport(capabilityReport))
+            put("fallback", fallback)
+            putNullable("workspace", workspace)
+        },
+    )
+}
+
+private fun buildEventIdFilter(eventId: String): String {
+    return "@Id = \"${eventId.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
 private suspend fun SeqMcpBackend.validateSignalIfNeeded(signalId: String?, workspace: String?) {
@@ -831,6 +1169,87 @@ private fun buildSeqSqlErrorMessage(result: JsonObject, error: String): String {
             append(suggestion)
         }
     }
+}
+
+private fun buildSeqSqlErrorMessage(error: SeqApiException): String {
+    val baseMessage = error.seqError
+        ?.takeIf { it.isNotBlank() }
+        ?: error.responseBody
+            ?.takeIf { it.isNotBlank() && !it.trimStart().startsWith("{") }
+        ?: error.message
+        ?.takeIf { it.isNotBlank() }
+        ?: "The query could not be executed."
+    return buildString {
+        append("Seq rejected the SQL query: ")
+        append(baseMessage)
+        if (error.seqReasons.isNotEmpty()) {
+            append(". Reasons: ")
+            append(error.seqReasons.joinToString("; "))
+        }
+        if (!error.seqSuggestion.isNullOrBlank()) {
+            append(". Suggestion: ")
+            append(error.seqSuggestion)
+        }
+        append(". Seq SQL event queries use `from stream` and `limit <n>`; use `@Message like '%text%' ci` for message text, or SeqSearch for exploratory text queries.")
+    }
+}
+
+private fun buildSeqSqlDialectContract(): JsonObject {
+    return buildJsonObject {
+        put("source", JsonPrimitive("Use `from stream` for event queries. SeqQuerySql runs over the event stream and any active signal/workspace scope."))
+        put("rowLimit", JsonPrimitive("Use `limit <n>` at the end of the query, not `top <n>`."))
+        put("operators", JsonPrimitive("Use SQL-style operators and single-quoted strings in queries: `and`, `or`, `not`, `=` and `like`."))
+        put("ordering", JsonPrimitive("Use `order by <column-or-alias> asc|desc`; for latest events, order by `@Timestamp desc`."))
+        put("messageText", JsonPrimitive("SQL queries do not support free-text fragments like `\"timeout\"`; use `@Message like '%timeout%' ci` or SeqSearch."))
+    }
+}
+
+private fun buildSeqSqlExamples(): JsonArray {
+    return buildJsonArray {
+        addSqlExample(
+            title = "Hello world count",
+            query = "select count(*) as Events from stream",
+            note = "Minimal query that verifies the SQL surface is working.",
+        )
+        addSqlExample(
+            title = "Latest error events",
+            query = "select @Timestamp, @Level, @Message from stream where @Level = 'Error' order by @Timestamp desc limit 50",
+            note = "Use `limit`, not `top`, when you want the latest rows.",
+        )
+        addSqlExample(
+            title = "Message text search in SQL",
+            query = "select @Timestamp, @Level, @Message from stream where @Message like '%timeout%' ci order by @Timestamp desc limit 20",
+            note = "For message text in SQL, use `like`; for broader exploratory text search, prefer SeqSearch.",
+        )
+        addSqlExample(
+            title = "Grouped error counts",
+            query = "select count(*) as Errors from stream where @Level = 'Error' group by RequestPath order by Errors desc limit 20",
+            note = "Example aggregation with grouping and ordering by an alias.",
+        )
+        addSqlExample(
+            title = "P99 latency by endpoint",
+            query = "select percentile(Elapsed, 99) as P99 from stream group by RequestPath order by P99 desc limit 20",
+            note = "Example percentile aggregation using Seq's SQL-like query language.",
+        )
+    }
+}
+
+private fun buildSeqSqlMessageSearchGuidance(): JsonObject {
+    return buildJsonObject {
+        put("inSql", JsonPrimitive("Use SQL predicates like `@Message like '%timeout%' ci` when the text search needs to participate in a SQL query."))
+        put("useSeqSearch", JsonPrimitive("Use SeqSearch for fuzzy or exploratory text search, especially when you are starting from an error string or mixed filter conditions."))
+        put("notSupportedInSql", JsonPrimitive("Free-text fragments such as `\"timeout\"` are not valid inside Seq SQL queries."))
+    }
+}
+
+private fun JsonArrayBuilder.addSqlExample(title: String, query: String, note: String) {
+    add(
+        buildJsonObject {
+            put("title", JsonPrimitive(title))
+            put("query", JsonPrimitive(query))
+            put("note", JsonPrimitive(note))
+        },
+    )
 }
 
 private fun looksLikeFilterSyntaxError(message: String): Boolean {

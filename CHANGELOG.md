@@ -8,6 +8,19 @@
 
 - Nothing yet.
 
+## [2026.1.1] - 2026-04-19
+
+### Added
+
+- `SeqWhoAmI` and `SeqCapabilities` MCP tools for inspecting the resolved Seq auth context, current user identity, and permalink/query capability checks.
+- `SeqDescribeSqlDialect` MCP tool with working Seq SQL examples and guidance for common query pitfalls.
+
+### Changed
+
+- Improved Seq permalink handling to preflight auth capabilities, normalize missing-user failures, and return structured diagnostics plus fallback event metadata instead of raw backend errors.
+- Improved Seq SQL ergonomics with clearer tool descriptions, embedded example queries, and structured parser guidance including Seq `Suggestion` and `Reasons` details when queries fail.
+- Made workspace credential selection explicit in MCP tool schemas and diagnostics so it is clear when a workspace override or the default API key is being used.
+
 ## [2026.1.0] - 2026-04-19
 
 ### Added
