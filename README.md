@@ -73,15 +73,6 @@ The current scaffold includes:
 - Tools operate against the currently opened IDE project.
 - If the plugin is disabled for the current project, the Seq MCP tool window is hidden and MCP tools are not exposed.
 
-## Planned next steps
-
-The next implementation phase is intended to cover the basic Seq MCP flows inspired by the reference server at [willibrandon/seq-mcp-server](https://github.com/willibrandon/seq-mcp-server):
-
-- Seq connection configuration
-- Event search
-- Live event streaming / tailing
-- Basic signal discovery
-
 ## Development
 
 Use Java 21 and the Gradle wrapper included in this repository.
