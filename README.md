@@ -4,7 +4,36 @@
 `Seq MCP` is an IntelliJ IDEA plugin scaffold for bringing Seq observability workflows and Model Context Protocol integration into the IDE. It exposes Seq-focused tools through JetBrains' built-in MCP server so AI assistants can work against the currently opened project.
 
 To work properly, the IDE must include the built-in MCP server, the AI assistant must be configured to use that server, and `Seq MCP` must be enabled for the current project in `Settings | Tools | Seq MCP`.
+
+## Support the project
+
+If you find this plugin helpful and want to support its development, consider buying me a coffee:
+
+<table align="center" style="border-collapse: collapse; width: 100%; text-align: center;">
+  <tbody>
+  </tbody>
+  <tfoot>
+    <tr style="background-color: #f9f9f9;">
+      <td style="padding: 20px;">
+        <a href="https://buymeacoffee.com/vitalii_b" style="text-decoration: none; color: inherit;">
+<pre style="display: inline-block; margin: 10px 0; font-family: monospace;">
+    ( (
+     ) )
+  ........
+  |      |]
+  \      /
+   `----'
+ Buy Me a Coffee
+</pre>
+        </a>
+      </td>
+    </tr>
+  </tfoot>
+</table>
 <!-- Plugin description end -->
+
+[![Version](http://phpstorm.espend.de/badge/31358/version)](https://plugins.jetbrains.com/plugin/31358-seq-mcp)
+[![Downloads](http://phpstorm.espend.de/badge/31358/downloads)](https://plugins.jetbrains.com/plugin/31358-seq-mcp)
 
 ## Status
 
@@ -29,8 +58,8 @@ The current scaffold includes:
 
 ## Installation and setup
 
-1. Open the project in a compatible JetBrains IDE.
-2. Install the plugin or run it from source with `./gradlew runIde`.
+1. Open a compatible JetBrains IDE.
+2. Install `Seq MCP` from the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/31358-seq-mcp) or run it from source with `./gradlew runIde`.
 3. Make sure the IDE's built-in MCP server is available to the AI assistant you want to use.
 4. Add the IDE MCP server entry to the assistant's MCP configuration.
 5. Open `Settings | Tools | Seq MCP`.
@@ -61,41 +90,6 @@ Use Java 21 and the Gradle wrapper included in this repository.
 ./gradlew runIde
 ./gradlew check
 ./gradlew verifyPlugin
-```
-
-## Support the project
-
-If you find this plugin helpful and want to support its development, consider buying me a coffee:
-
-<table align="center" style="border-collapse: collapse; width: 100%; text-align: center;">
-  <tbody>
-  </tbody>
-  <tfoot>
-    <tr style="background-color: #f9f9f9;">
-      <td style="padding: 20px;">
-        <a href="https://buymeacoffee.com/vitalii_b" style="text-decoration: none; color: inherit;">
-<pre style="display: inline-block; margin: 10px 0; font-family: monospace;">
-    ( (
-     ) )
-  ........
-  |      |]
-  \      /
-   `----'
- Buy Me a Coffee
-</pre>
-        </a>
-      </td>
-    </tr>
-  </tfoot>
-</table>
-
-## Project layout
-
-```text
-src/main/kotlin/com/vitaliiboiko/seqmcp
-src/main/resources/META-INF/plugin.xml
-src/main/resources/messages/MyBundle.properties
-src/test/kotlin/com/vitaliiboiko/seqmcp
 ```
 
 ## License
