@@ -8,6 +8,25 @@ plugins {
     id("org.jetbrains.changelog")
 }
 
+val basePluginVersion = providers.gradleProperty("version")
+val isGithubPrerelease = providers.environmentVariable("GITHUB_RELEASE_PRERELEASE")
+    .map(String::toBoolean)
+    .orElse(false)
+val effectivePluginVersion = providers.provider {
+    val pluginVersion = basePluginVersion.get()
+
+    if (!isGithubPrerelease.get()) {
+        pluginVersion
+    } else {
+        val releaseId = providers.environmentVariable("GITHUB_RELEASE_ID").orNull
+            ?: throw GradleException("GITHUB_RELEASE_ID is required when publishing a GitHub prerelease.")
+
+        "$pluginVersion-alpha.$releaseId"
+    }
+}
+
+version = effectivePluginVersion.get()
+
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/version_catalogs.html
 dependencies {
     testImplementation("junit:junit:4.13.2")
@@ -24,6 +43,8 @@ dependencies {
 // Configure IntelliJ Platform Gradle Plugin - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-extension.html
 intellijPlatform {
     pluginConfiguration {
+        version = effectivePluginVersion
+
         // Extract the <!-- Plugin description --> section from README.md and provide for the plugin's manifest
         description = providers.fileContents(layout.projectDirectory.file("README.md")).asText.map {
             val start = "<!-- Plugin description -->"
@@ -39,7 +60,7 @@ intellijPlatform {
 
         val changelog = project.changelog // local variable for configuration cache compatibility
         // Get the latest available change notes from the changelog file
-        changeNotes = version.map { pluginVersion ->
+        changeNotes = basePluginVersion.map { pluginVersion ->
             with(changelog) {
                 renderItem(
                     (getOrNull(pluginVersion) ?: getUnreleased())
@@ -48,6 +69,13 @@ intellijPlatform {
                     Changelog.OutputType.HTML,
                 )
             }
+        }
+    }
+
+    publishing {
+        token = providers.environmentVariable("JET_BRAINS_TOKEN")
+        channels = effectivePluginVersion.map {
+            listOf(it.substringAfter('-', "").substringBefore('.').ifEmpty { "default" })
         }
     }
 }

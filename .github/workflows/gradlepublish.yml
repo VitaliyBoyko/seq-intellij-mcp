@@ -1,0 +1,47 @@
+# This workflow builds and publishes the plugin to JetBrains Marketplace when a GitHub release is published.
+
+name: Publish Plugin
+
+on:
+  release:
+    types: [ prereleased, released ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+      GITHUB_RELEASE_ID: ${{ github.event.release.id }}
+
+    steps:
+      - name: Fetch Sources
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+
+      - name: Patch Changelog
+        if: ${{ github.event.release.body != '' }}
+        env:
+          CHANGELOG: ${{ github.event.release.body }}
+        run: |
+          RELEASE_NOTE="./build/tmp/release_note.txt"
+          mkdir -p "$(dirname "$RELEASE_NOTE")"
+          echo "$CHANGELOG" > "$RELEASE_NOTE"
+
+          ./gradlew patchChangelog --release-note-file="$RELEASE_NOTE"
+
+      - name: Run publish plugin
+        env:
+          JET_BRAINS_TOKEN: ${{ secrets.JET_BRAINS_TOKEN }}
+        run: ./gradlew publishPlugin -i --no-daemon
