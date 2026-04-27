@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.net.URI
+import java.nio.file.Path
 import java.time.Instant
 
 class SeqMcpPluginTest : BasePlatformTestCase() {
@@ -134,6 +135,41 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         assertEquals(Instant.parse("2026-04-18T11:15:30Z"), backend.searchRequest?.toDateUtc)
         assertEquals("event-123", backend.searchRequest?.afterId)
         assertEquals(45, backend.searchRequest?.timeoutSeconds)
+    }
+
+    fun testToolsAdvertiseOptionalProjectPathInEveryInputSchema() {
+        val tools = createToolsProvider(RecordingBackend()).getTools()
+
+        tools.forEach { tool ->
+            val projectPathSchema = tool.descriptor.inputSchema.propertiesSchema["projectPath"]?.jsonObject
+            assertNotNull("Expected ${tool.descriptor.name} to advertise projectPath", projectPathSchema)
+            assertEquals("string", projectPathSchema!!["type"]?.jsonPrimitive?.content)
+            assertFalse(tool.descriptor.inputSchema.requiredProperties.contains("projectPath"))
+        }
+    }
+
+    fun testToolsForwardProjectPathToResolver() = runBlocking {
+        val backend = RecordingBackend()
+        val expectedProjectPath = Path.of(project.basePath!!).toAbsolutePath().normalize().toString()
+        var resolvedProjectPath: String? = null
+        val tool = SeqMcpToolsProvider(
+            backend = backend,
+            enabledProjectResolver = { projectPath ->
+                resolvedProjectPath = projectPath
+                project
+            },
+        ).findTool("SeqSearch")
+
+        val result = tool.call(
+            buildJsonObject {
+                put("projectPath", JsonPrimitive(expectedProjectPath))
+                put("filter", JsonPrimitive(""))
+            },
+        )
+
+        assertFalse(result.isError)
+        assertEquals(expectedProjectPath, resolvedProjectPath)
+        assertEquals("", backend.searchRequest?.filter)
     }
 
     fun testSeqSearchRejectsInvalidDateRange() = runBlocking<Unit> {

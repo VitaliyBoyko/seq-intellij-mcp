@@ -38,7 +38,7 @@ import java.time.format.DateTimeParseException
 
 class SeqMcpToolsProvider @JvmOverloads constructor(
     private val backend: SeqMcpBackend = service<SeqApiService>(),
-    private val enabledProjectResolver: () -> Project? = ::resolveEnabledProject,
+    private val enabledProjectResolver: (String?) -> Project? = ::resolveEnabledProject,
 ) : McpToolsProvider {
     private val toolCategory = McpToolCategory(
         shortName = "seq",
@@ -105,7 +105,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 outputSchema = seqSearchOutputSchema(),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val request = buildSeqSearchRequest(arguments)
             backend.validateSignalIfNeeded(request.signalId, request.workspace)
 
@@ -146,7 +146,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 outputSchema = eventsOutputSchema("capturedEvents"),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val filter = optionalString(arguments, "filter")
             val count = optionalInt(arguments, "count") ?: 10
             val workspace = optionalString(arguments, "workspace")
@@ -185,7 +185,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val fuzzy = requiredString(arguments, "fuzzy")
             val workspace = optionalString(arguments, "workspace")
             val result = backend.toStrictFilterExpression(fuzzy, workspace)
@@ -217,7 +217,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val workspace = optionalString(arguments, "workspace")
             val signals = backend.listSignals(workspace)
             success(
@@ -247,7 +247,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val workspace = optionalString(arguments, "workspace")
             val capabilityReport = backend.getCapabilities(workspace)
             val message = capabilityReport.authContext.resolvedUserId?.let { userId ->
@@ -282,7 +282,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val workspace = optionalString(arguments, "workspace")
             val capabilityReport = backend.getCapabilities(workspace)
 
@@ -339,7 +339,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 outputSchema = seqQuerySqlOutputSchema(),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val request = buildSeqSqlQueryRequest(arguments)
             backend.validateSignalIfNeeded(request.signalId, request.workspace)
 
@@ -415,7 +415,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) {
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(it, enabledProjectResolver)
             success(
                 text = "SeqDescribeSqlDialect returned the Seq SQL contract and example queries.",
                 structured = buildJsonObject {
@@ -445,7 +445,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val ownerId = optionalString(arguments, "ownerId")
             val shared = optionalBoolean(arguments, "shared") ?: true
             val workspace = optionalString(arguments, "workspace")
@@ -480,7 +480,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val id = requiredString(arguments, "id")
             val workspace = optionalString(arguments, "workspace")
             val query = backend.getSqlQuery(id, workspace)
@@ -512,7 +512,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val ownerId = optionalString(arguments, "ownerId")
             val shared = optionalBoolean(arguments, "shared") ?: true
             val workspace = optionalString(arguments, "workspace")
@@ -547,7 +547,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val id = requiredString(arguments, "id")
             val workspace = optionalString(arguments, "workspace")
             val workspaceEntity = backend.getWorkspace(id, workspace)
@@ -579,7 +579,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val ownerId = optionalString(arguments, "ownerId")
             val shared = optionalBoolean(arguments, "shared") ?: true
             val workspace = optionalString(arguments, "workspace")
@@ -614,7 +614,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val id = requiredString(arguments, "id")
             val workspace = optionalString(arguments, "workspace")
             val dashboard = backend.getDashboard(id, workspace)
@@ -651,7 +651,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 ),
             ),
         ) { arguments ->
-            ensureEnabledProject(enabledProjectResolver)
+            ensureEnabledProject(arguments, enabledProjectResolver)
             val eventId = requiredString(arguments, "eventId")
             val includeEvent = optionalBoolean(arguments, "includeEvent") ?: false
             val renderEvent = optionalBoolean(arguments, "renderEvent") ?: false
@@ -750,12 +750,22 @@ private class JsonBackedTool(
 private fun inputSchema(
     required: Set<String> = emptySet(),
     properties: Map<String, JsonElement>,
-): McpToolSchema = buildSchema(*properties.entries.map { it.key to it.value }.toTypedArray(), required = required)
+): McpToolSchema {
+    val propertiesWithProjectPath = linkedMapOf(
+        "projectPath" to projectPathInputSchema(),
+    ).apply {
+        putAll(properties)
+    }
+    return buildSchema(*propertiesWithProjectPath.entries.map { it.key to it.value }.toTypedArray(), required = required)
+}
 
 private const val WORKSPACE_PARAMETER_DESCRIPTION =
     "Optional workspace credential key. If it matches a configured workspace API key override, that credential is used; otherwise the default Seq API key is used."
 
 private const val WORKSPACE_OUTPUT_DESCRIPTION = "Workspace credential key echoed back in the response."
+
+private const val PROJECT_PATH_PARAMETER_DESCRIPTION =
+    "Optional absolute IDE project path used by JetBrains MCP clients to resolve the target project before dispatch. Seq MCP also uses it to prefer that project when multiple projects are open."
 
 private fun eventsOutputSchema(eventsProperty: String): McpToolSchema {
     return buildSchema(
@@ -828,6 +838,8 @@ private fun nullableStringSchema(description: String): JsonElement {
 private fun workspaceInputSchema(): JsonElement = stringSchema(WORKSPACE_PARAMETER_DESCRIPTION)
 
 private fun workspaceOutputSchema(): JsonElement = nullableStringSchema(WORKSPACE_OUTPUT_DESCRIPTION)
+
+private fun projectPathInputSchema(): JsonElement = stringSchema(PROJECT_PATH_PARAMETER_DESCRIPTION)
 
 private fun intSchema(
     description: String,
@@ -1378,14 +1390,22 @@ private fun JsonElement.toSignalExpressionString(): String? {
     }
 }
 
-private fun ensureEnabledProject(enabledProjectResolver: () -> Project?): Project {
-    return enabledProjectResolver() ?: throw IllegalStateException(
-        "Seq MCP is disabled for the active project. Enable it in Settings | Tools | Seq MCP.",
+private fun ensureEnabledProject(arguments: JsonObject, enabledProjectResolver: (String?) -> Project?): Project {
+    val requestedProjectPath = optionalString(arguments, "projectPath")
+    return enabledProjectResolver(requestedProjectPath) ?: throw IllegalStateException(
+        buildProjectDisabledMessage(requestedProjectPath),
     )
 }
 
-private fun resolveEnabledProject(): Project? {
+private fun resolveEnabledProject(projectPath: String?): Project? {
     val openProjects = ProjectManager.getInstance().openProjects.filterNot(Project::isDisposed)
+    normalizeProjectPath(projectPath)?.let { normalizedProjectPath ->
+        openProjects.firstOrNull { project ->
+            project.service<SeqMcpProjectSettingsService>().enabled &&
+                normalizeProjectPath(project.basePath) == normalizedProjectPath
+        }?.let { return it }
+    }
+
     val activeProject = ProjectUtil.getActiveProject()
     if (activeProject != null && activeProject in openProjects && activeProject.service<SeqMcpProjectSettingsService>().enabled) {
         return activeProject
@@ -1393,4 +1413,22 @@ private fun resolveEnabledProject(): Project? {
 
     val enabledProjects = openProjects.filter { it.service<SeqMcpProjectSettingsService>().enabled }
     return enabledProjects.singleOrNull()
+}
+
+private fun buildProjectDisabledMessage(projectPath: String?): String {
+    val normalizedProjectPath = normalizeProjectPath(projectPath)
+    return if (normalizedProjectPath != null) {
+        "Seq MCP is disabled for project `$normalizedProjectPath`, or that project is not open. Enable it in Settings | Tools | Seq MCP."
+    } else {
+        "Seq MCP is disabled for the active project. Enable it in Settings | Tools | Seq MCP."
+    }
+}
+
+private fun normalizeProjectPath(projectPath: String?): String? {
+    return projectPath
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+        ?.let { path ->
+            runCatching { java.nio.file.Path.of(path).toAbsolutePath().normalize().toString() }.getOrDefault(path)
+        }
 }

@@ -8,6 +8,12 @@
 
 - Nothing yet.
 
+## [2026.1.2] - 2026-04-27
+
+### Changed
+
+- Added optional `projectPath` to every Seq MCP tool input schema and taught runtime project resolution to honor it when provided, so JetBrains MCP clients like PhpStorm can resolve the target project before dispatch instead of failing at schema validation.
+
 ## [2026.1.1] - 2026-04-19
 
 ### Added
