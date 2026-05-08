@@ -8,6 +8,13 @@
 
 - Nothing yet.
 
+## [2026.1.3] - 2026-05-08
+
+### Changed
+
+- Fixed `SeqCreatePermalink` capability detection for anonymous Seq servers so the plugin no longer advertises permalink creation as supported when `/api/users/current` resolves a display identity but `/api/permalinks` still rejects the request with `A valid user id is required.`
+- Improved permalink failure diagnostics to explain the anonymous-auth limitation directly and steer users toward an authenticated user-scoped credential or API key when permalink creation is required.
+
 ## [2026.1.2] - 2026-04-27
 
 ### Changed

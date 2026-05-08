@@ -1002,10 +1002,15 @@ private fun buildPermalinkFailureMessage(
 ): String {
     val rawMessage = error?.seqError?.takeIf { it.isNotBlank() }
         ?: error?.message?.takeIf { it.isNotBlank() }
+    val anonymousMode = capabilityReport.authContext.authMode == "anonymous"
     val missingUserContext = !capabilityReport.canResolveCurrentUser ||
         rawMessage?.contains("valid user id", ignoreCase = true) == true
 
     return when {
+        anonymousMode -> {
+            "Permalink creation is unavailable in anonymous mode. Seq may return a display identity from /api/users/current, but /api/permalinks requires an authenticated user-scoped credential."
+        }
+
         missingUserContext -> {
             "Permalink creation is unavailable: current Seq credential has no user identity. Search/query work, but permalink APIs require a user-scoped session or compatible API key."
         }

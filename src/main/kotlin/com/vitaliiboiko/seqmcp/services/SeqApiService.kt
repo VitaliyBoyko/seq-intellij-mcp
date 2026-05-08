@@ -357,10 +357,15 @@ class SeqApiService : SeqMcpBackend {
             }
 
             val canResolveCurrentUser = currentUser?.stringValue("Id") != null
-            val canCreatePermalinks = permalinksGroup != null && canResolveCurrentUser
+            val canCreatePermalinks = permalinksGroup != null &&
+                canResolveCurrentUser &&
+                credentialContext.authMode != "anonymous"
 
             if (!canCreatePermalinks && permalinksGroup != null && !canResolveCurrentUser) {
                 notes += "Permalink creation requires a Seq user identity; the current credential did not resolve one."
+            }
+            if (!canCreatePermalinks && permalinksGroup != null && credentialContext.authMode == "anonymous") {
+                notes += "Permalink creation is unavailable in anonymous mode; /api/permalinks requires an authenticated user-scoped credential even if /api/users/current returns a display identity."
             }
 
             SeqCapabilityReport(
