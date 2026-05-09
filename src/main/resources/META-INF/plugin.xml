@@ -3,7 +3,6 @@
     <id>com.vitaliiboiko.seqmcp</id>
     <name>Seq MCP</name>
     <vendor>vitaliiboiko</vendor>
-    <idea-version since-build="261" until-build="261.*"/>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.mcpServer</depends>
