@@ -8,6 +8,12 @@
 
 - Nothing yet.
 
+## [2026.1.4] - 2026-05-23
+
+### Changed
+
+- Simplified the Seq MCP tool window action layout by removing the `Open Settings` button from the top row, keeping `Clear Log` in the log header, and aligning the remaining actions with more consistent button styling.
+
 ## [2026.1.3] - 2026-05-08
 
 ### Changed

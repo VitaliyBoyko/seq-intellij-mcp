@@ -7,7 +7,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ex.EditorEx
-import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
@@ -22,7 +21,6 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.ui.JBUI
 import com.vitaliiboiko.seqmcp.SeqMcpBundle
-import com.vitaliiboiko.seqmcp.settings.SeqMcpConfigurable
 import com.vitaliiboiko.seqmcp.services.SeqApiException
 import com.vitaliiboiko.seqmcp.services.SeqApiService
 import com.vitaliiboiko.seqmcp.services.SeqMcpLogService
@@ -35,8 +33,9 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.awt.BorderLayout
 import java.awt.Color
-import java.awt.FlowLayout
+import java.awt.Dimension
 import java.awt.GridLayout
+import javax.swing.BorderFactory
 import javax.swing.JButton
 
 class SeqMcpToolWindowFactory : ToolWindowFactory {
@@ -78,48 +77,68 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
             add(nextStepsLabel)
         }
 
-        val settingsActions = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT, 8, 0)).apply {
-            add(JButton(SeqMcpBundle.message("toolWindow.openSettings")).apply {
-                addActionListener {
-                    ShowSettingsUtil.getInstance().showSettingsDialog(project, SeqMcpConfigurable::class.java)
-                    refresh()
-                    logService.append(SeqMcpBundle.message("log.settingsOpened"))
-                }
-            })
-            add(JButton(SeqMcpBundle.message("toolWindow.fetchLast10Events")).apply {
-                toolTipText = SeqMcpBundle.message("toolWindow.fetchLast10EventsDescription")
-                styleButton(
-                    background = JBColor(Color(0x0D47A1), Color(0x1565C0)),
-                    foreground = JBColor(Color.WHITE, Color.WHITE),
+        val fetchLast10Button = JButton(SeqMcpBundle.message("toolWindow.fetchLast10Events")).apply {
+            toolTipText = SeqMcpBundle.message("toolWindow.fetchLast10EventsDescription")
+            styleButton(
+                background = JBColor(Color(0x0D47A1), Color(0x1565C0)),
+                foreground = JBColor(Color.WHITE, Color.WHITE),
+            )
+            addActionListener {
+                fetchLast10Events()
+            }
+        }
+        val clearSeqEventsButton = JButton(SeqMcpBundle.message("toolWindow.clearSeqEvents")).apply {
+            toolTipText = SeqMcpBundle.message("toolWindow.clearSeqEventsDescription")
+            styleButton(
+                background = JBColor(Color(0xB71C1C), Color(0xC62828)),
+                foreground = JBColor(Color.WHITE, Color.WHITE),
+            )
+            addActionListener {
+                clearSeqEvents()
+            }
+        }
+        val refreshButton = JButton(SeqMcpBundle.message("toolWindow.refresh")).apply {
+            styleButton(
+                background = JBColor(Color(0x3C3F41), Color(0x4C5052)),
+                foreground = JBColor(Color(0xDFE1E5), Color(0xDFE1E5)),
+            )
+            addActionListener {
+                refresh()
+                logService.append(
+                    SeqMcpBundle.message("log.refreshed", projectService.connectionStatus()),
                 )
-                addActionListener {
-                    fetchLast10Events()
-                }
-            })
-            add(JButton(SeqMcpBundle.message("toolWindow.clearSeqEvents")).apply {
-                toolTipText = SeqMcpBundle.message("toolWindow.clearSeqEventsDescription")
-                styleButton(
-                    background = JBColor(Color(0xB71C1C), Color(0xC62828)),
-                    foreground = JBColor(Color.WHITE, Color.WHITE),
-                )
-                addActionListener {
-                    clearSeqEvents()
-                }
-            })
-            add(JButton(SeqMcpBundle.message("toolWindow.refresh")).apply {
-                addActionListener {
-                    refresh()
-                    logService.append(
-                        SeqMcpBundle.message("log.refreshed", projectService.connectionStatus()),
-                    )
-                }
-            })
+            }
+        }
+
+        normalizeButtonSizes(
+            fetchLast10Button,
+            clearSeqEventsButton,
+            refreshButton,
+        )
+
+        val settingsActionsRow = JBPanel<JBPanel<*>>(GridLayout(1, 3, 8, 0)).apply {
+            add(fetchLast10Button)
+            add(clearSeqEventsButton)
+            add(refreshButton)
+        }
+
+        val settingsActions = JBPanel<JBPanel<*>>(BorderLayout()).apply {
+            border = JBUI.Borders.emptyTop(4)
+            add(settingsActionsRow, BorderLayout.WEST)
         }
 
         configureLogEditor()
 
+        val clearLogButton = JButton(SeqMcpBundle.message("toolWindow.clearLog")).apply {
+            toolTipText = SeqMcpBundle.message("toolWindow.clearLogDescription")
+            addActionListener {
+                clearLog()
+            }
+        }
+
         val logHeader = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             add(JBLabel(SeqMcpBundle.message("toolWindow.logTitle")), BorderLayout.WEST)
+            add(clearLogButton, BorderLayout.EAST)
         }
 
         val logPanel = JBPanel<JBPanel<*>>(BorderLayout()).apply {
@@ -277,6 +296,22 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
         })
     }
 
+    private fun clearLog() {
+        val removedCount = logService.clear()
+        if (removedCount == 0) {
+            showNotification(
+                content = SeqMcpBundle.message("notification.logAlreadyEmpty"),
+                type = NotificationType.INFORMATION,
+            )
+            return
+        }
+
+        showNotification(
+            content = SeqMcpBundle.message("notification.logCleared", removedCount),
+            type = NotificationType.INFORMATION,
+        )
+    }
+
     private fun showNotification(content: String, type: NotificationType) {
         Notification(
             "Seq MCP",
@@ -299,7 +334,28 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
         this.foreground = foreground
         isOpaque = true
         isContentAreaFilled = true
-        border = JBUI.Borders.empty(6, 10)
+        isBorderPainted = true
+        border = BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(JBColor(Color(0x5E6164), Color(0x6B7073))),
+            JBUI.Borders.empty(6, 12),
+        )
+    }
+
+    private fun normalizeButtonSizes(vararg buttons: JButton) {
+        val buttonSize = buttons
+            .map { it.preferredSize }
+            .fold(Dimension()) { maxSize, size ->
+                Dimension(
+                    maxOf(maxSize.width, size.width),
+                    maxOf(maxSize.height, size.height),
+                )
+            }
+
+        buttons.forEach { button ->
+            button.preferredSize = Dimension(buttonSize)
+            button.minimumSize = Dimension(buttonSize)
+            button.maximumSize = Dimension(buttonSize)
+        }
     }
 
     private fun configureLogEditor() {
