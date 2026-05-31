@@ -43,6 +43,8 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
     private val toolCategory = McpToolCategory(
         shortName = "seq",
         fullyQualifiedName = "com.vitaliiboiko.seqmcp",
+        isExperimental = false,
+        alwaysIncluded = false,
     )
 
     override fun getTools(): List<McpTool> {

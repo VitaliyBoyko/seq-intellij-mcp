@@ -33,9 +33,8 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdeaUltimate("2026.1")
+        intellijIdeaUltimate("262.6653.22")
         bundledPlugin("com.intellij.mcpServer")
-        plugin("com.intellij.ml.llm:261.22158.366")
         testFramework(TestFrameworkType.Platform)
     }
 }
@@ -73,7 +72,6 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = providers.gradleProperty("pluginSinceBuild")
-            untilBuild = providers.gradleProperty("pluginUntilBuild")
         }
     }
 

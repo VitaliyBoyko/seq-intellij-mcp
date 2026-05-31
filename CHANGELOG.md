@@ -8,6 +8,12 @@
 
 - Nothing yet.
 
+## [2026.1.5] - 2026-05-31
+
+### Changed
+
+- Raised the minimum JetBrains IDE compatibility to IntelliJ Platform build `262` and left the upper bound open so future incompatibilities are caught by verification.
+
 ## [2026.1.4] - 2026-05-23
 
 ### Changed
