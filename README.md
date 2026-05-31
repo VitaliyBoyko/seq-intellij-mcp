@@ -1,7 +1,7 @@
 # Seq MCP Plugin
 
 <!-- Plugin description -->
-`Seq MCP` is an IntelliJ IDEA plugin scaffold for bringing Seq observability workflows and Model Context Protocol integration into the IDE. It exposes Seq-focused tools through JetBrains' built-in MCP server so AI assistants can work against the currently opened project.
+`Seq MCP` is an IntelliJ IDEA plugin for bringing Seq observability workflows and Model Context Protocol integration into the IDE. It exposes Seq-focused tools through JetBrains' built-in MCP server so AI assistants can work against the currently opened project.
 
 To work properly, the IDE must include the built-in MCP server, the AI assistant must be configured to use that server, and `Seq MCP` must be enabled for the current project in `Settings | Tools | Seq MCP`.
 
@@ -39,7 +39,7 @@ If you find this plugin helpful and want to support its development, consider bu
 
 This repository is bootstrapped from the official [JetBrains IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template) and targets IntelliJ IDEA Ultimate via the IntelliJ Platform Gradle Plugin 2.x.
 
-The current scaffold includes:
+The plugin includes:
 
 - Gradle Kotlin DSL build configured for IntelliJ IDEA Ultimate `2026.1`
 - Dependencies on the bundled JetBrains MCP server and AI assistant integrations
