@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -27,13 +28,22 @@ val effectivePluginVersion = providers.provider {
 
 version = effectivePluginVersion.get()
 
+kotlin {
+    jvmToolchain(25)
+
+    compilerOptions {
+        // Inherit platform interface defaults without generating bridges to deprecated or experimental APIs.
+        jvmDefault = JvmDefaultMode.NO_COMPATIBILITY
+    }
+}
+
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/version_catalogs.html
 dependencies {
     testImplementation("junit:junit:4.13.2")
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdeaUltimate("262.6653.22")
+        intellijIdeaUltimate("263.3889.65")
         bundledPlugin("com.intellij.mcpServer")
         testFramework(TestFrameworkType.Platform)
     }
@@ -79,6 +89,12 @@ intellijPlatform {
         token = providers.environmentVariable("JET_BRAINS_TOKEN")
         channels = effectivePluginVersion.map {
             listOf(it.substringAfter('-', "").substringBefore('.').ifEmpty { "default" })
+        }
+    }
+
+    pluginVerification {
+        ides {
+            current()
         }
     }
 }

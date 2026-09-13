@@ -8,6 +8,12 @@
 
 - Nothing yet.
 
+## [2026.1.6] - 2026-09-13
+
+### Changed
+
+- Updated compatibility for IntelliJ Platform build `263.3889.65` and removed deprecated and experimental API usages.
+
 ## [2026.1.5] - 2026-05-31
 
 ### Changed

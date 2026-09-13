@@ -41,7 +41,7 @@ This repository is bootstrapped from the official [JetBrains IntelliJ Platform P
 
 The plugin includes:
 
-- Gradle Kotlin DSL build configured for IntelliJ IDEA Ultimate `2026.1`
+- Gradle Kotlin DSL build configured for IntelliJ IDEA Ultimate `2026.3` (build `263.3889.65`)
 - Dependencies on the bundled JetBrains MCP server and AI assistant integrations
 - Plugin metadata for `Seq MCP`
 - Project-level enablement setting, placeholder tool window, and project service
@@ -49,7 +49,7 @@ The plugin includes:
 
 ## Requirements
 
-- IntelliJ IDEA Ultimate `2026.1` or another compatible JetBrains IDE build that includes the bundled MCP server plugin required by this project
+- IntelliJ IDEA Ultimate `2026.3` (build `263.3889.65` or newer) or another compatible JetBrains IDE build that includes the bundled MCP server plugin required by this project
 - JetBrains AI Assistant available in the IDE
 - The IDE's built-in MCP server added to the AI assistant MCP configuration
 - `Seq MCP` enabled for the current project in `Settings | Tools | Seq MCP`
@@ -75,13 +75,15 @@ The plugin includes:
 
 ## Development
 
-Use Java 21 and the Gradle wrapper included in this repository.
+Use Java 25 and the Gradle wrapper included in this repository.
 
 ```bash
 ./gradlew runIde
 ./gradlew check
 ./gradlew verifyPlugin
 ```
+
+`verifyPlugin` checks compatibility against the same IDEA build used to compile the plugin (`263.3889.65`).
 
 ## License
 
