@@ -92,3 +92,7 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTI
 [Magento Seq](https://github.com/VitaliyBoyko/magento-seq) sends local Magento logs and custom events into Seq. It is an optional event producer; this plugin can query Seq data from other applications too. For Magento code navigation and generation, see the separate [Magento 2 and Adobe Commerce PhpStorm plugin](https://github.com/VitaliyBoyko/magento2-phpstorm-plugin).
 
 See [releases](https://github.com/VitaliyBoyko/seq-intellij-mcp/releases), the [changelog](CHANGELOG.md), or [report an issue](https://github.com/VitaliyBoyko/seq-intellij-mcp/issues) with your IDE build, plugin version and failing tool name.
+
+## Repository navigation for AI agents
+
+See [AGENTS.md](AGENTS.md) for the architecture map, source entry points, validation commands and contribution constraints.
