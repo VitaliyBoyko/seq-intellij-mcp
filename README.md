@@ -1,7 +1,7 @@
-# Seq MCP Plugin
+# Seq MCP: structured log search for JetBrains IDEs
 
 <!-- Plugin description -->
-`Seq MCP` is an IntelliJ IDEA plugin for bringing Seq observability workflows and Model Context Protocol integration into the IDE. It exposes Seq-focused tools through JetBrains' built-in MCP server so AI assistants can work against the currently opened project.
+`Seq MCP` connects JetBrains IDEs to Seq structured logs through the Model Context Protocol (MCP). A connected AI assistant can search events, run Seq SQL queries, inspect signals and dashboards, and create event permalinks through JetBrains' built-in MCP server.
 
 To work properly, the IDE must include the built-in MCP server, the AI assistant must be configured to use that server, and `Seq MCP` must be enabled for the current project in `Settings | Tools | Seq MCP`.
 
@@ -35,22 +35,20 @@ If you find this plugin helpful and want to support its development, consider bu
 [![Version](http://phpstorm.espend.de/badge/31358/version)](https://plugins.jetbrains.com/plugin/31358-seq-mcp)
 [![Downloads](http://phpstorm.espend.de/badge/31358/downloads)](https://plugins.jetbrains.com/plugin/31358-seq-mcp)
 
-## Status
+## Features
 
-This repository is bootstrapped from the official [JetBrains IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template) and targets IntelliJ IDEA Ultimate via the IntelliJ Platform Gradle Plugin 2.x.
+- Search structured events, convert fuzzy text to strict filters, and wait for new events.
+- Run Seq SQL queries with structured JSON or CSV results.
+- Inspect saved queries, signals, workspaces and dashboards.
+- Check server capabilities and create event permalinks.
+- Configure a default API key and workspace credential overrides, stored in JetBrains Password Safe.
 
-The plugin includes:
-
-- Gradle Kotlin DSL build configured for IntelliJ IDEA Ultimate `2026.3` (build `263.3889.65`)
-- Dependencies on the bundled JetBrains MCP server and AI assistant integrations
-- Plugin metadata for `Seq MCP`
-- Project-level enablement setting, placeholder tool window, and project service
-- Startup activity and a basic platform test
+See the [MCP tools and examples](docs/mcp-tools.md) for all 15 tools, query arguments and troubleshooting. The build targets IntelliJ IDEA Ultimate `263.3889.65`; compatibility requires an IDE with the bundled MCP server.
 
 ## Requirements
 
 - IntelliJ IDEA Ultimate `2026.3` (build `263.3889.65` or newer) or another compatible JetBrains IDE build that includes the bundled MCP server plugin required by this project
-- JetBrains AI Assistant available in the IDE
+- An AI assistant configured to connect to the IDE MCP server
 - The IDE's built-in MCP server added to the AI assistant MCP configuration
 - `Seq MCP` enabled for the current project in `Settings | Tools | Seq MCP`
 - `SEQ_SERVER_URL` configured; `SEQ_API_KEY` is optional but recommended
@@ -88,3 +86,9 @@ Use Java 25 and the Gradle wrapper included in this repository.
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## Related projects and support
+
+[Magento Seq](https://github.com/VitaliyBoyko/magento-seq) sends local Magento logs and custom events into Seq. It is an optional event producer; this plugin can query Seq data from other applications too. For Magento code navigation and generation, see the separate [Magento 2 and Adobe Commerce PhpStorm plugin](https://github.com/VitaliyBoyko/magento2-phpstorm-plugin).
+
+See [releases](https://github.com/VitaliyBoyko/seq-intellij-mcp/releases), the [changelog](CHANGELOG.md), or [report an issue](https://github.com/VitaliyBoyko/seq-intellij-mcp/issues) with your IDE build, plugin version and failing tool name.
