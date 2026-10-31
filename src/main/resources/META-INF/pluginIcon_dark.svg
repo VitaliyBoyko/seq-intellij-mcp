@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+SPDX-License-Identifier: MIT
+License: see LICENSE in the repository root.
+-->
+
 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
   <title>Seq MCP plugin icon</title>
   <polygon points="13.6 11.2 23.4 8.6 26.8 17.6 17.2 20.4" fill="#FBA018"/>

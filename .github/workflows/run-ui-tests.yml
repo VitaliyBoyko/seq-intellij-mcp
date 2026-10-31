@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+# SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
+# SPDX-License-Identifier: MIT AND Apache-2.0
+# License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+
 # GitHub Actions Workflow for launching UI tests on Linux, Windows, and Mac in the following steps:
 # - Prepare and launch IDE with your plugin and robot-server plugin, which is needed to interact with the UI.
 # - Wait for IDE to start.

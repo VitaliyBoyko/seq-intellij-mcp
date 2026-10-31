@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+SPDX-License-Identifier: MIT
+License: see LICENSE in the repository root.
+-->
+
 # Repository guide for AI coding agents
 
 ## Project identity and scope

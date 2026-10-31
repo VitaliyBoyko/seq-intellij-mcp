@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+// SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
+// SPDX-License-Identifier: MIT AND Apache-2.0
+// License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+
 import org.jetbrains.intellij.platform.gradle.extensions.intellijPlatform
 
 rootProject.name = "seq-mcp-plugin"

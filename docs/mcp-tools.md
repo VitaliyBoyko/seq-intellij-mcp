@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+SPDX-License-Identifier: MIT
+License: see LICENSE in the repository root.
+-->
+
 # Seq MCP tools, query examples and troubleshooting
 
 [Seq MCP](../README.md) exposes the tools below through the JetBrains IDE MCP server. Configure the Seq server URL and credentials in `Settings | Tools | Seq MCP`, enable the plugin for the project, and connect your assistant to the IDE server before trying these examples.

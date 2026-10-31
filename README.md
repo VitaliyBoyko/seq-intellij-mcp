@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+SPDX-License-Identifier: MIT
+License: see LICENSE in the repository root.
+-->
+
 # Seq MCP: structured log search for JetBrains IDEs
 
 <!-- Plugin description -->
@@ -85,7 +91,7 @@ Use Java 25 and the Gradle wrapper included in this repository.
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Author contributions are licensed under the [MIT License](LICENSE). Third-party code from the JetBrains template and Gradle wrapper retains its [Apache-2.0 license](LICENSES/Apache-2.0.txt); see [NOTICE](NOTICE).
 
 ## Related projects and support
 

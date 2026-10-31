@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+// SPDX-License-Identifier: MIT
+// License: see LICENSE in the repository root.
+
 package com.vitaliiboiko.seqmcp.services
 
 import com.intellij.openapi.components.BaseState

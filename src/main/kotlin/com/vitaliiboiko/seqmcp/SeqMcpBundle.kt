@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+// SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
+// SPDX-License-Identifier: MIT AND Apache-2.0
+// License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+
 package com.vitaliiboiko.seqmcp
 
 import com.intellij.DynamicBundle
