@@ -4,10 +4,9 @@
 # License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
 
 # GitHub Actions Workflow is created for testing and preparing the plugin release in the following steps:
-# - Validate Gradle Wrapper.
-# - Run 'test' and 'verifyPlugin' tasks.
-# - Run the 'buildPlugin' task and prepare artifact for further tests.
-# - Run the 'runPluginVerifier' task.
+# - Validate the Gradle Wrapper and package the plugin.
+# - Run checks on the latest Linux, Windows, and macOS runners.
+# - Verify plugin compatibility and license notices after all tests pass.
 # - Create a draft release.
 #
 # The workflow is triggered on push and pull_request events.
@@ -16,11 +15,14 @@
 #
 name: Build
 on:
-  # Trigger the workflow on pushes to only the 'main' branch (this avoids duplicate checks being run e.g., for dependabot pull requests)
+  # Only push builds on the default branch; other branches are checked by pull_request.
   push:
-    branches: [ main ]
+    branches: [ master ]
   # Trigger the workflow on any pull request
   pull_request:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -32,6 +34,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
 
       # Free GitHub Actions Environment Disk Space
@@ -77,16 +80,26 @@ jobs:
         with:
           name: ${{ steps.artifact.outputs.filename }}
           path: ./build/distributions/content/*/*
+          retention-days: 14
 
-  # Run tests and upload a code coverage report
+  # Run platform and production transport tests independently on each OS.
   test:
-    name: Test
+    name: Test (${{ matrix.os }})
     needs: [ build ]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    defaults:
+      run:
+        shell: bash
     steps:
 
       # Free GitHub Actions Environment Disk Space
       - name: Maximize Build Space
+        if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: false
@@ -106,26 +119,29 @@ jobs:
       # Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
-        with:
-          cache-read-only: true
 
-      # Run tests
+      # Execute the tests on every OS instead of restoring cached test results.
       - name: Run Tests
-        run: ./gradlew check
+        run: ./gradlew check --no-daemon --no-build-cache --no-configuration-cache --console=plain
 
-      # Collect Tests Result of failed tests
+      # Keep reports from every matrix entry, including failures.
       - name: Collect Tests Result
-        if: ${{ failure() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:
-          name: tests-result
-          path: ${{ github.workspace }}/build/reports/tests
+          name: tests-result-${{ matrix.os }}
+          retention-days: 14
+          path: |
+            build/reports/tests
+            build/test-results
+            build/reports/problems
 
   # Run plugin structure verification along with IntelliJ Plugin Verifier
   verify:
     name: Verify plugin
-    needs: [ build ]
+    needs: [ build, test ]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
 
       # Free GitHub Actions Environment Disk Space
@@ -154,7 +170,7 @@ jobs:
 
       # Run Verify Plugin task and IntelliJ Plugin Verifier tool
       - name: Run Plugin Verification tasks
-        run: ./gradlew verifyPlugin
+        run: ./gradlew verifyPlugin --no-daemon --no-configuration-cache --console=plain
 
       # Collect Plugin Verifier Result
       - name: Collect Plugin Verifier Result
@@ -163,13 +179,25 @@ jobs:
         with:
           name: pluginVerifier-result
           path: ${{ github.workspace }}/build/reports/pluginVerifier
+          retention-days: 14
+
+  license:
+    name: License check
+    needs: [ test ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch Sources
+        uses: actions/checkout@v6
+      - name: Check SPDX notices and license texts
+        uses: fsfe/reuse-action@v6
 
   # Prepare a draft release for GitHub Releases page for the manual verification
   # If accepted and published, the release workflow would be triggered
   releaseDraft:
     name: Release draft
     if: github.event_name != 'pull_request'
-    needs: [ build, test, verify ]
+    needs: [ build, test, verify, license ]
     runs-on: ubuntu-latest
     permissions:
       contents: write

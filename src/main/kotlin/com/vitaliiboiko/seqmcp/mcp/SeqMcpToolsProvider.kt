@@ -15,6 +15,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.vitaliiboiko.seqmcp.services.SeqApiService
+import com.vitaliiboiko.seqmcp.services.SeqApiClient
 import com.vitaliiboiko.seqmcp.services.SeqAuthContext
 import com.vitaliiboiko.seqmcp.services.SeqCapabilityReport
 import com.vitaliiboiko.seqmcp.services.SeqApiException
@@ -22,6 +23,7 @@ import com.vitaliiboiko.seqmcp.services.SeqMcpBackend
 import com.vitaliiboiko.seqmcp.services.SeqMcpProjectSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqSearchRequest
 import com.vitaliiboiko.seqmcp.services.SeqSqlQueryRequest
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
 import kotlinx.serialization.json.JsonElement
@@ -86,6 +88,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                             description = "Maximum number of events to return.",
                             defaultValue = 100,
                             minimum = 1,
+                            maximum = SeqApiClient.MAX_SEARCH_EVENTS,
                         ),
                         "signalId" to stringSchema(
                             "Optional id of a saved Seq signal, which is a reusable event query/filter in Seq.",
@@ -118,6 +121,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
             val events = try {
                 backend.searchEvents(request)
             } catch (error: SeqApiException) {
+                if (error.statusCode != 400) throw error
                 throw IllegalArgumentException(buildSeqSearchErrorMessage(error))
             }
 
@@ -356,6 +360,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 val csvResult = runCatching { backend.querySqlCsv(request) }
                 val error = csvResult.exceptionOrNull() as? SeqApiException
                 if (error != null) {
+                    if (error.statusCode != 400) throw error
                     seqSqlFailureResult(request, error, format = "csv")
                 } else {
                     val csv = csvResult.getOrThrow()
@@ -374,6 +379,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
                 val queryResult = runCatching { backend.querySql(request) }
                 val error = queryResult.exceptionOrNull() as? SeqApiException
                 if (error != null) {
+                    if (error.statusCode != 400) throw error
                     seqSqlFailureResult(request, error, format = "json")
                 } else {
                     val result = queryResult.getOrThrow()
@@ -743,10 +749,15 @@ private class JsonBackedTool(
         return runCatching {
             invoke(args)
         }.getOrElse { error ->
+            if (error is CancellationException) throw error
             McpToolCallResult.Companion.error(
                 error.message ?: "Unexpected Seq MCP error",
                 buildJsonObject {
                     put("error", JsonPrimitive(error.message ?: "Unexpected Seq MCP error"))
+                    if (error is SeqApiException) {
+                        error.errorCode?.let { put("code", JsonPrimitive(it)) }
+                        error.statusCode?.let { put("statusCode", JsonPrimitive(it)) }
+                    }
                 },
             )
         }
@@ -793,8 +804,19 @@ private fun seqQuerySqlOutputSchema(): McpToolSchema {
     return buildSchema(
         "format" to stringSchema("The output format returned by the tool, either json or csv."),
         "query" to stringSchema("The SQL query that was executed."),
-        "columns" to arraySchema("Columns returned by the Seq SQL query."),
-        "rows" to arraySchema("Tabular rows returned by the Seq SQL query."),
+        "columns" to buildJsonObject {
+            put("description", JsonPrimitive("Column names or descriptors returned by Seq."))
+            put("type", JsonPrimitive("array"))
+            put("items", buildJsonObject {})
+        },
+        "rows" to buildJsonObject {
+            put("description", JsonPrimitive("Rows of values corresponding to the returned columns."))
+            put("type", JsonPrimitive("array"))
+            put("items", buildJsonObject {
+                put("type", JsonPrimitive("array"))
+                put("items", buildJsonObject {})
+            })
+        },
         "slices" to arraySchema("Time slices returned by time-grouped Seq SQL queries."),
         "series" to arraySchema("Time series returned by grouped Seq SQL queries."),
         "variables" to objectSchema("Variables returned by the query, if any."),
@@ -1039,7 +1061,10 @@ private suspend fun buildPermalinkFallback(
             workspace = workspace,
             render = includeEvent || renderEvent,
         )
-    }.getOrNull()
+    }.getOrElse { error ->
+        if (error is CancellationException) throw error
+        null
+    }
 
     return buildJsonObject {
         put("eventId", JsonPrimitive(eventId))
@@ -1111,7 +1136,7 @@ private fun buildSeqSearchRequest(arguments: JsonObject): SeqSearchRequest {
     val afterId = optionalString(arguments, "afterId")
     val timeoutSeconds = optionalInt(arguments, "timeoutSeconds") ?: 15
 
-    require(count > 0) { "count must be greater than 0" }
+    require(count in 1..SeqApiClient.MAX_SEARCH_EVENTS) { "count must be between 1 and ${SeqApiClient.MAX_SEARCH_EVENTS}" }
     require(timeoutSeconds in 1..300) { "timeoutSeconds must be between 1 and 300" }
     if (fromDateUtc != null && toDateUtc != null) {
         require(!fromDateUtc.isAfter(toDateUtc)) {

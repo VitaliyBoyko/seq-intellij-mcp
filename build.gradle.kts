@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
 // License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
 
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
@@ -45,10 +46,16 @@ kotlin {
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/version_catalogs.html
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0") {
+        exclude(group = "org.jetbrains.kotlin") // Use the platform's Kotlin runtime.
+    }
+    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0") {
+        exclude(group = "org.jetbrains.kotlin")
+    }
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdeaUltimate("263.3889.65")
+        intellijIdeaUltimate("263.7307.44")
         bundledPlugin("com.intellij.mcpServer")
         testFramework(TestFrameworkType.Platform)
     }
@@ -112,7 +119,28 @@ changelog {
 }
 
 tasks {
+    withType<Test>().configureEach {
+        // Bundled Code Provenance analytics can keep fixture temp directories open on Windows.
+        systemProperty("intellij.code.provenance.enabled", "false")
+    }
+
+    test {
+        exclude("**/SeqCloudIntegrationTest*")
+    }
+
     publishPlugin {
         dependsOn(patchChangelog)
+    }
+}
+
+intellijPlatformTesting {
+    testIde.register("cloudIntegrationTest") {
+        task {
+            description = "Tests HTTPS, SQL, and WebSocket search/live capture against an explicitly configured Seq server."
+            include("**/SeqCloudIntegrationTest.class")
+            // Credentials are read from the test process environment, never Gradle properties or task inputs.
+            outputs.upToDateWhen { false }
+            outputs.doNotCacheIf("Uses a live Seq server") { true }
+        }
     }
 }

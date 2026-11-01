@@ -10,7 +10,7 @@ License: see LICENSE in the repository root.
 
 Seq MCP is a Kotlin JetBrains IDE plugin that exposes Seq structured-log search, Seq SQL, signals, workspaces, dashboards and related tools through the IDE's bundled MCP server. It is not a standalone MCP server or a Seq deployment.
 
-Start with [README.md](README.md), [docs/mcp-tools.md](docs/mcp-tools.md) and [CHANGELOG.md](CHANGELOG.md). The current provider registers 15 tools. The build targets IntelliJ IDEA Ultimate `263.3889.65`, requires the bundled `com.intellij.mcpServer` plugin and uses Java 25. Read build metadata before changing compatibility claims.
+Start with [README.md](README.md), [docs/mcp-tools.md](docs/mcp-tools.md) and [CHANGELOG.md](CHANGELOG.md). The current provider registers 15 tools. The build targets IntelliJ IDEA Ultimate `263.7307.44`, requires the bundled `com.intellij.mcpServer` plugin and uses Java 25. Read build metadata before changing compatibility claims.
 
 ## Architecture and navigation
 
@@ -19,7 +19,8 @@ Kotlin paths below are under `src/main/kotlin/com/vitaliiboiko/seqmcp/`.
 | Path | Responsibility |
 | --- | --- |
 | `mcp/SeqMcpToolsProvider.kt` | Tool descriptors, JSON schemas, argument validation, project resolution, backend calls and structured results |
-| `services/SeqApiService.kt` | `SeqMcpBackend` interface, Seq HTTP/WebSocket access, resource-link resolution, credentials and API errors |
+| `services/SeqApiService.kt` | `SeqMcpBackend` interface, request/result types, API errors and the IDE service adapter |
+| `services/SeqApiClient.kt` | Production Seq HTTP/WebSocket client, resource-link resolution, credentials and transport limits |
 | `services/SeqMcpToolService.kt` | Tool descriptions displayed in the UI |
 | `services/SeqMcpSettingsService.kt` | Application-wide server settings and Password Safe API keys, including workspace overrides |
 | `services/SeqMcpProjectSettingsService.kt` | Per-project enablement persisted in workspace settings |
@@ -34,15 +35,17 @@ Other entry points:
 - `src/main/resources/META-INF/plugin.xml`: plugin identity, dependencies and extension registrations.
 - `src/main/resources/messages/MyBundle.properties`: localized UI strings.
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqMcpPluginTest.kt`: platform tests with fake backend/project resolver, schema and behavior checks.
+- `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqTransportTest.kt`: production-client tests against a local TLS/WebSocket server.
+- `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqCloudIntegrationTest.kt`: opt-in live-server tests; see README for credentials and sandbox setup.
 - `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `gradle/wrapper/gradle-wrapper.properties`: toolchain, plugin versions, target IDE, Gradle wrapper and release configuration.
-- `.github/workflows/build.yml`: packaging, checks and plugin verification; `gradlepublish.yml`: Marketplace publishing; `run-ui-tests.yml`: separate manual UI workflow.
+- `.github/workflows/build.yml`: packaging, checks on the latest Linux/Windows/macOS runners, then plugin verification and REUSE license checks; `gradlepublish.yml`: Marketplace publishing; `run-ui-tests.yml`: separate manual UI workflow.
 - `.run/`: checked-in IDE run configurations.
 
 Tool calls flow through the provider's schema/argument checks and enabled-project resolution to `SeqMcpBackend`, then `SeqApiService`. Keep the backend interface usable by the existing fake tests.
 
 ## Build and validation
 
-Run from the repository root using Java 25 and the checked-in Gradle wrapper (Gradle 9.4.1 at this revision). Initial runs need network/cache access for Gradle, dependencies and the target IDE.
+Run from the repository root using Java 25 and the checked-in Gradle wrapper (Gradle 9.8.2 at this revision). Initial runs need network/cache access for Gradle, dependencies and the target IDE.
 
 ```sh
 ./gradlew buildPlugin
@@ -51,6 +54,10 @@ Run from the repository root using Java 25 and the checked-in Gradle wrapper (Gr
 ```
 
 These are the main CI tasks. `buildPlugin` packages the plugin; `check` runs verification including tests; `verifyPlugin` checks compatibility with the configured current IDEA build, not every JetBrains IDE/version. A targeted test invocation is `./gradlew test --tests 'com.vitaliiboiko.seqmcp.SeqMcpPluginTest'`.
+
+CI runs `check` on `ubuntu-latest`, `windows-latest` and `macos-latest` without cached test results. Plugin verification and `reuse lint` run after every OS passes; both must pass before a release draft is prepared. Run `reuse lint` locally to validate SPDX notices and the license texts under `LICENSES/`.
+
+Gradle test JVMs disable bundled Code Provenance analytics, whose background process can retain fixture directories during Windows teardown. This setting does not affect the packaged plugin or `runIde`.
 
 Use `./gradlew runIde` for manual settings/tool-window/MCP checks in a sandbox IDE. Test with the plugin enabled and disabled, and with multiple open projects when changing resolution. Unit tests with the fake backend do not prove live Seq HTTP/WebSocket behavior; report when a live-server check was unavailable.
 

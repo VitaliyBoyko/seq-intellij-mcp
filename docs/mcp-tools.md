@@ -41,7 +41,7 @@ Ask your connected assistant to call `SeqSearch` with these arguments:
 }
 ```
 
-Use `fromDateUtc` and `toDateUtc` for an explicit ISO-8601 UTC window, or `afterId` to paginate after a returned event ID. Start with a small count when investigating logs.
+Use `fromDateUtc` and `toDateUtc` for an explicit ISO-8601 UTC window, or `afterId` to paginate after a returned event ID. Search accepts 1–1,000 events per call. Start with a small count when investigating logs; a timed-out search reports `SEARCH_TIMEOUT` instead of returning incomplete results.
 
 ## Run a Seq SQL query
 

@@ -23,6 +23,7 @@ import com.vitaliiboiko.seqmcp.services.SeqMcpToolService
 import com.vitaliiboiko.seqmcp.services.WorkspaceApiKeyEntry
 import com.vitaliiboiko.seqmcp.services.toWebSocketUri
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -35,6 +36,41 @@ import java.nio.file.Path
 import java.time.Instant
 
 class SeqMcpPluginTest : BasePlatformTestCase() {
+
+    fun testToolCancellationIsPropagated() = runBlocking {
+        val backend = object : SeqMcpBackend by RecordingBackend() {
+            override suspend fun searchEvents(request: SeqSearchRequest): JsonArray {
+                throw CancellationException("cancelled")
+            }
+        }
+        try {
+            createToolsProvider(backend).findTool("SeqSearch").call(buildJsonObject { put("filter", JsonPrimitive("")) })
+            fail("Cancellation must reach the MCP caller")
+        } catch (_: CancellationException) {
+            // Expected: cancellation is not converted into a tool error result.
+        }
+    }
+
+    fun testSearchRejectsUnboundedResultCounts() = runBlocking {
+        val backend = RecordingBackend()
+        val result = createToolsProvider(backend).findTool("SeqSearch").call(buildJsonObject {
+            put("filter", JsonPrimitive(""))
+            put("count", JsonPrimitive(1001))
+        })
+        assertNull(backend.searchRequest)
+        assertStringContains(result.structuredContent!!["error"]!!.jsonPrimitive.content, "between 1 and 1000")
+    }
+
+    fun testTransportFailureRetainsStructuredDiagnostics() = runBlocking {
+        val backend = RecordingBackend().apply {
+            searchException = SeqApiException("WebSocket upgrade rejected", statusCode = 403, errorCode = "WEBSOCKET_HANDSHAKE")
+        }
+        val result = createToolsProvider(backend).findTool("SeqSearch").call(buildJsonObject {
+            put("filter", JsonPrimitive(""))
+        })
+        assertEquals("WEBSOCKET_HANDSHAKE", result.structuredContent!!["code"]!!.jsonPrimitive.content)
+        assertEquals("403", result.structuredContent!!["statusCode"]!!.jsonPrimitive.content)
+    }
 
     fun testSettingsStartEmpty() {
         val settings = resetSettings()
