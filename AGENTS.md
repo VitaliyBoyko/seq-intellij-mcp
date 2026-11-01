@@ -38,7 +38,7 @@ Other entry points:
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqTransportTest.kt`: production-client tests against a local TLS/WebSocket server.
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqCloudIntegrationTest.kt`: opt-in live-server tests; see README for credentials and sandbox setup.
 - `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `gradle/wrapper/gradle-wrapper.properties`: toolchain, plugin versions, target IDE, Gradle wrapper and release configuration.
-- `.github/workflows/build.yml`: packaging, checks and plugin verification; `gradlepublish.yml`: Marketplace publishing; `run-ui-tests.yml`: separate manual UI workflow.
+- `.github/workflows/build.yml`: packaging, checks on the latest Linux/Windows/macOS runners, then plugin verification and REUSE license checks; `gradlepublish.yml`: Marketplace publishing; `run-ui-tests.yml`: separate manual UI workflow.
 - `.run/`: checked-in IDE run configurations.
 
 Tool calls flow through the provider's schema/argument checks and enabled-project resolution to `SeqMcpBackend`, then `SeqApiService`. Keep the backend interface usable by the existing fake tests.
@@ -54,6 +54,8 @@ Run from the repository root using Java 25 and the checked-in Gradle wrapper (Gr
 ```
 
 These are the main CI tasks. `buildPlugin` packages the plugin; `check` runs verification including tests; `verifyPlugin` checks compatibility with the configured current IDEA build, not every JetBrains IDE/version. A targeted test invocation is `./gradlew test --tests 'com.vitaliiboiko.seqmcp.SeqMcpPluginTest'`.
+
+CI runs `check` on `ubuntu-latest`, `windows-latest` and `macos-latest` without cached test results. Plugin verification and `reuse lint` run after every OS passes; both must pass before a release draft is prepared. Run `reuse lint` locally to validate SPDX notices and the license texts under `LICENSES/`.
 
 Use `./gradlew runIde` for manual settings/tool-window/MCP checks in a sandbox IDE. Test with the plugin enabled and disabled, and with multiple open projects when changing resolution. Unit tests with the fake backend do not prove live Seq HTTP/WebSocket behavior; report when a live-server check was unavailable.
 
