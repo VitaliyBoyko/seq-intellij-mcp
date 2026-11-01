@@ -46,10 +46,10 @@ kotlin {
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/version_catalogs.html
 dependencies {
     testImplementation("junit:junit:4.13.2")
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0") {
+    testImplementation("com.squareup.okhttp3:mockwebserver:5.5.1") {
         exclude(group = "org.jetbrains.kotlin") // Use the platform's Kotlin runtime.
     }
-    testImplementation("com.squareup.okhttp3:okhttp-tls:4.12.0") {
+    testImplementation("com.squareup.okhttp3:okhttp-tls:5.5.1") {
         exclude(group = "org.jetbrains.kotlin")
     }
 
