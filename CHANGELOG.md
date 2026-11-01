@@ -10,27 +10,21 @@ License: see LICENSE in the repository root.
 
 ## [Unreleased]
 
-### Added
-
-- HTTPS and WebSocket transport tests using the production Seq client, covering authentication, proxy failures, TLS, timeouts, cancellation, base paths, and escaped filters.
-- Opt-in `cloudIntegrationTest` task and manual GitHub Actions workflow for authenticated search, SQL, live capture, and invalid-credential checks against a remote Seq instance.
-- Cloud test setup instructions and explicit remote connection diagnostics.
+## [2026.1.7] - 2026-11-01
 
 ### Changed
 
-- Added HTTP response deadlines and cancellable network requests; SQL request deadlines honor the configured query timeout.
-- Treat incomplete searches and abnormal WebSocket closes as failures instead of successful partial results, and avoid waiting indefinitely during stream cleanup.
-- Preserve percent-encoded paths and filters when converting HTTP URLs to WebSocket URLs.
-- Reject API discovery links outside the configured server origin before forwarding credentials.
-- Limit searches to 1,000 events, bound HTTP responses and WebSocket results, and apply stream backpressure.
-- Preserve MCP cancellation and correct SQL row output schemas.
-- Update the build to Gradle 9.8.2 with distribution checksum verification and IntelliJ Platform Gradle Plugin 2.19.0.
+- Seq requests now honor response deadlines and stop promptly when a tool call is canceled; SQL requests honor the configured query timeout.
+- Searches accept at most 1,000 events. Oversized results and incomplete searches now fail explicitly instead of returning partial success.
 
 ### Fixed
 
 - Accept HTTP(S) server URLs and API links regardless of scheme letter casing.
-- Make the untrusted-certificate test independent of platform test execution order.
-- Refresh the IntelliJ IDEA 2026.3 build used for packaging after the previous EAP expired.
+- Preserve escaped filters and URL paths when connecting through a reverse proxy.
+- Report authentication, TLS, proxy, and WebSocket failures with clearer diagnostics.
+- Reject API discovery links outside the configured server origin before forwarding credentials.
+- Return correct structured SQL results through MCP.
+- Refresh compatibility testing and packaging for IntelliJ IDEA 2026.3 build `263.7307.44`.
 
 ## [2026.1.6] - 2026-09-13
 
