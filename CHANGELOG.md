@@ -10,6 +10,12 @@ License: see LICENSE in the repository root.
 
 ## [Unreleased]
 
+## [2026.1.8] - 2026-11-01
+
+### Changed
+
+- Dependency maintenance update.
+
 ## [2026.1.7] - 2026-11-01
 
 ### Changed
