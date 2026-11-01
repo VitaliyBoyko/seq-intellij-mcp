@@ -31,6 +31,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import java.net.InetAddress
 import java.net.URI
 import java.net.http.HttpClient
 import java.time.Duration
@@ -43,7 +44,12 @@ class SeqTransportTest {
 
     @Before
     fun setUp() {
-        val certificate = HeldCertificate.Builder().addSubjectAlternativeName("localhost").build()
+        // MockWebServer's reverse lookup may return a numeric loopback address on Windows.
+        val certificate = HeldCertificate.Builder()
+            .addSubjectAlternativeName("localhost")
+            .addSubjectAlternativeName("127.0.0.1")
+            .addSubjectAlternativeName("::1")
+            .build()
         val serverCertificates = HandshakeCertificates.Builder().heldCertificate(certificate).build()
         val clientCertificates = HandshakeCertificates.Builder().addTrustedCertificate(certificate.certificate).build()
         server = MockWebServer().apply {
@@ -105,6 +111,23 @@ class SeqTransportTest {
                 assertEquals("10", request.requestUrl!!.queryParameter("count"))
                 assertEquals("websocket", request.getHeader("Upgrade")?.lowercase())
             }
+        }
+    }
+
+    @Test(timeout = 10_000)
+    fun loopbackIpAddressWorksForAuthenticatedWssSearch() = runBlocking {
+        val baseUrl = server.url("/seq/").newBuilder()
+            .host(InetAddress.getByName(server.hostName).hostAddress)
+            .build()
+        discovery()
+        stream("""{"Id":"event-1"}""")
+
+        val events = SeqApiClient({ baseUrl.toString() }, { "read-key" }, http)
+            .searchEvents(SeqSearchRequest("", count = 10))
+
+        assertEquals("event-1", events.single().jsonObject["Id"]!!.jsonPrimitive.content)
+        repeat(3) {
+            assertEquals("read-key", server.takeRequest(1, TimeUnit.SECONDS)!!.getHeader("X-Seq-ApiKey"))
         }
     }
 

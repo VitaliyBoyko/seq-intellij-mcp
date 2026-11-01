@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT AND Apache-2.0
 // License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
 
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
@@ -118,6 +119,11 @@ changelog {
 }
 
 tasks {
+    withType<Test>().configureEach {
+        // Bundled Code Provenance analytics can keep fixture temp directories open on Windows.
+        systemProperty("intellij.code.provenance.enabled", "false")
+    }
+
     test {
         exclude("**/SeqCloudIntegrationTest*")
     }

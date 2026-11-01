@@ -57,6 +57,8 @@ These are the main CI tasks. `buildPlugin` packages the plugin; `check` runs ver
 
 CI runs `check` on `ubuntu-latest`, `windows-latest` and `macos-latest` without cached test results. Plugin verification and `reuse lint` run after every OS passes; both must pass before a release draft is prepared. Run `reuse lint` locally to validate SPDX notices and the license texts under `LICENSES/`.
 
+Gradle test JVMs disable bundled Code Provenance analytics, whose background process can retain fixture directories during Windows teardown. This setting does not affect the packaged plugin or `runIde`.
+
 Use `./gradlew runIde` for manual settings/tool-window/MCP checks in a sandbox IDE. Test with the plugin enabled and disabled, and with multiple open projects when changing resolution. Unit tests with the fake backend do not prove live Seq HTTP/WebSocket behavior; report when a live-server check was unavailable.
 
 Do not assume `runIdeForUiTests` is a configured local task merely because the manual UI workflow references it: the inspected build does not explicitly register that task or a UI-test dependency. Verify available tasks before using that workflow as evidence.
