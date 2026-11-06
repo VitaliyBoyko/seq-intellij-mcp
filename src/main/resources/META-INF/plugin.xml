@@ -6,7 +6,7 @@ License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
 -->
 
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
-<idea-plugin>
+<idea-plugin url="https://github.com/VitaliyBoyko/seq-intellij-mcp">
     <id>com.vitaliiboiko.seqmcp</id>
     <name>Seq MCP</name>
     <vendor>vitaliiboiko</vendor>
