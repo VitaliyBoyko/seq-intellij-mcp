@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
+# SPDX-License-Identifier: MIT
+# License: see LICENSE in the repository root.
+
+name: Real Seq sandbox
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: seq-sandbox-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Test UI and transport against authenticated Seq
+        run: python3 scripts/test-seq-sandbox.py
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: real-seq-sandbox-results
+          path: |
+            build/reports/tests/sandboxUiTest
+            build/reports/tests/cloudIntegrationTest
+            build/test-results/sandboxUiTest
+            build/test-results/cloudIntegrationTest

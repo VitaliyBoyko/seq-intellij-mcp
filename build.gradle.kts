@@ -125,7 +125,7 @@ tasks {
     }
 
     test {
-        exclude("**/SeqCloudIntegrationTest*")
+        exclude("**/SeqCloudIntegrationTest*", "**/SeqSandboxUiTest*")
     }
 
     publishPlugin {
@@ -134,9 +134,21 @@ tasks {
 }
 
 intellijPlatformTesting {
+    testIde.register("sandboxUiTest") {
+        testFramework(TestFrameworkType.Platform)
+        task {
+            description = "Tests the connection button through saved settings and the production client against an authenticated Seq sandbox."
+            setExcludes(emptyList())
+            include("**/SeqSandboxUiTest.class")
+            outputs.upToDateWhen { false }
+            outputs.doNotCacheIf("Uses a real Seq sandbox") { true }
+        }
+    }
+
     testIde.register("cloudIntegrationTest") {
         task {
             description = "Tests HTTPS, SQL, and WebSocket search/live capture against an explicitly configured Seq server."
+            setExcludes(emptyList())
             include("**/SeqCloudIntegrationTest.class")
             // Credentials are read from the test process environment, never Gradle properties or task inputs.
             outputs.upToDateWhen { false }

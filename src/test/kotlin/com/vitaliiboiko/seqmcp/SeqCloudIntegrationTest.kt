@@ -183,5 +183,5 @@ class SeqCloudIntegrationTest {
 
     private fun requiredEnvironment(name: String): String =
         System.getenv(name)?.takeIf(String::isNotBlank)
-            ?: error("Set $name before running cloudIntegrationTest; see README.md. No cloud tests are skipped silently.")
+            ?: error("Set $name before running cloudIntegrationTest; see docs/development.md. No cloud tests are skipped silently.")
 }

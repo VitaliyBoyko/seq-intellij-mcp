@@ -3,14 +3,8 @@
 # SPDX-License-Identifier: MIT AND Apache-2.0
 # License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
 
-# GitHub Actions Workflow for launching UI tests on Linux, Windows, and Mac in the following steps:
-# - Prepare and launch IDE with your plugin and robot-server plugin, which is needed to interact with the UI.
-# - Wait for IDE to start.
-# - Run UI tests with a separate Gradle task.
-#
-# Please check https://github.com/JetBrains/intellij-ui-test-robot for information about UI tests with IntelliJ Platform.
-#
-# Workflow is triggered manually.
+# Runs the real Swing component tests in the IntelliJ platform test framework.
+# No external Seq server or robot-server plugin is required.
 
 name: Run UI Tests
 on:
@@ -23,16 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            runIde: |
-              export DISPLAY=:99.0
-              Xvfb -ac :99 -screen 0 1920x1080x16 &
-              gradle runIdeForUiTests &
-          - os: windows-latest
-            runIde: start gradlew.bat runIdeForUiTests
-          - os: macos-latest
-            runIde: ./gradlew runIdeForUiTests &
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
 
@@ -53,18 +38,12 @@ jobs:
         with:
           cache-read-only: true
 
-      # Run IDEA prepared for UI testing
-      - name: Run IDE
-        run: ${{ matrix.runIde }}
+      - name: Test buttons and workspace grid
+        run: ./gradlew test --tests 'com.vitaliiboiko.seqmcp.SeqMcpUiTest' --rerun-tasks
 
-      # Wait for IDEA to be started
-      - name: Health Check
-        uses: jtalk/url-health-check-action@v5
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          url: http://127.0.0.1:8082
-          max-attempts: 15
-          retry-delay: 30s
-
-      # Run tests
-      - name: Tests
-        run: ./gradlew test
+          name: ui-test-reports-${{ matrix.os }}
+          path: build/reports/tests/test

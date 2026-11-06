@@ -13,8 +13,10 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindow
@@ -26,6 +28,10 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.ui.JBUI
 import com.vitaliiboiko.seqmcp.SeqMcpBundle
+import com.vitaliiboiko.seqmcp.settings.SeqMcpConfigurable
+import com.vitaliiboiko.seqmcp.services.SeqApiClient
+import com.vitaliiboiko.seqmcp.services.SeqMcpSettingsService
+import com.vitaliiboiko.seqmcp.services.ConnectionSettingsListener
 import com.vitaliiboiko.seqmcp.services.SeqApiException
 import com.vitaliiboiko.seqmcp.services.SeqApiService
 import com.vitaliiboiko.seqmcp.services.SeqMcpLogService
@@ -55,10 +61,20 @@ class SeqMcpToolWindowFactory : ToolWindowFactory {
     override fun shouldBeAvailable(project: Project): Boolean = project.service<SeqMcpProjectService>().isEnabledForProject()
 }
 
-private class SeqMcpToolWindow(private val project: Project) : Disposable {
+private class SeqMcpToolWindow @JvmOverloads constructor(
+    private val project: Project,
+    private val apiService: SeqApiClient = service<SeqApiService>(),
+    private val openSettings: () -> Unit = {
+        ShowSettingsUtil.getInstance().showSettingsDialog(project, SeqMcpConfigurable::class.java)
+    },
+) : Disposable {
 
     private val projectService = project.service<SeqMcpProjectService>()
-    private val apiService = service<SeqApiService>()
+    private val settings = service<SeqMcpSettingsService>()
+    private var connectionRevision = settings.connectionSettingsRevision
+    private var disposed = false
+    private val connectionLabel = JBLabel()
+    private val testConnectionButton = JButton(SeqMcpBundle.message("toolWindow.testConnection"))
     private val logService = project.service<SeqMcpLogService>()
     private val statusLabel = JBLabel()
     private val urlLabel = JBLabel()
@@ -75,6 +91,7 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
             add(JBLabel(SeqMcpBundle.message("toolWindow.title")))
             add(JBLabel(SeqMcpBundle.message("toolWindow.subtitle")))
             add(statusLabel)
+            add(connectionLabel)
             add(urlLabel)
             add(apiKeyLabel)
             add(toolsLabel)
@@ -82,10 +99,21 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
             add(nextStepsLabel)
         }
 
+        testConnectionButton.apply {
+            toolTipText = SeqMcpBundle.message("toolWindow.testConnectionDescription")
+            styleButton(JBColor(Color(0x0D47A1), Color(0x1565C0)), JBColor(Color.WHITE, Color.WHITE))
+            addActionListener { testConnection() }
+        }
+        val configureButton = JButton(SeqMcpBundle.message("toolWindow.openSettings")).apply {
+            addActionListener {
+                openSettings()
+                refresh()
+            }
+        }
         val fetchLast10Button = JButton(SeqMcpBundle.message("toolWindow.fetchLast10Events")).apply {
             toolTipText = SeqMcpBundle.message("toolWindow.fetchLast10EventsDescription")
             styleButton(
-                background = JBColor(Color(0x0D47A1), Color(0x1565C0)),
+                background = JBColor(Color(0x3C3F41), Color(0x4C5052)),
                 foreground = JBColor(Color.WHITE, Color.WHITE),
             )
             addActionListener {
@@ -116,20 +144,29 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
         }
 
         normalizeButtonSizes(
+            testConnectionButton,
             fetchLast10Button,
-            clearSeqEventsButton,
             refreshButton,
+            configureButton,
         )
 
-        val settingsActionsRow = JBPanel<JBPanel<*>>(GridLayout(1, 3, 8, 0)).apply {
+        val settingsActionsRow = JBPanel<JBPanel<*>>(GridLayout(0, 2, 8, 8)).apply {
+            add(testConnectionButton)
             add(fetchLast10Button)
-            add(clearSeqEventsButton)
             add(refreshButton)
+            add(configureButton)
         }
 
         val settingsActions = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             border = JBUI.Borders.emptyTop(4)
-            add(settingsActionsRow, BorderLayout.WEST)
+            add(settingsActionsRow, BorderLayout.NORTH)
+            add(JBPanel<JBPanel<*>>(BorderLayout(0, 4)).apply {
+                border = JBUI.Borders.emptyTop(16)
+                add(JBLabel(SeqMcpBundle.message("toolWindow.advanced")), BorderLayout.NORTH)
+                add(JBPanel<JBPanel<*>>(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
+                    add(clearSeqEventsButton)
+                }, BorderLayout.CENTER)
+            }, BorderLayout.SOUTH)
         }
 
         configureLogEditor()
@@ -157,7 +194,16 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
             add(settingsActions, BorderLayout.SOUTH)
         }
 
+        setConnectionStatus(SeqMcpBundle.message("connection.notTested"))
         refresh()
+        ApplicationManager.getApplication().messageBus.connect(this@SeqMcpToolWindow).subscribe(
+            SeqMcpSettingsService.CONNECTION_SETTINGS_CHANGED,
+            ConnectionSettingsListener {
+                ApplicationManager.getApplication().invokeLater {
+                    if (!disposed && !project.isDisposed) refresh()
+                }
+            },
+        )
         renderLog(logService.snapshot())
         logService.addListener(this@SeqMcpToolWindow, ::renderLog)
 
@@ -171,11 +217,61 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
     }
 
     private fun refresh() {
+        if (connectionRevision != settings.connectionSettingsRevision) {
+            connectionRevision = settings.connectionSettingsRevision
+            setConnectionStatus(SeqMcpBundle.message("connection.notTested"))
+        }
         statusLabel.text = SeqMcpBundle.message("toolWindow.status", projectService.connectionStatus())
         urlLabel.text = SeqMcpBundle.message("toolWindow.url", projectService.seqServerUrl())
         apiKeyLabel.text = SeqMcpBundle.message("toolWindow.apiKey", projectService.apiKeyStatus())
         toolsLabel.text = SeqMcpBundle.message("toolWindow.tools", projectService.supportedTools())
         nextStepsLabel.text = projectService.nextSteps()
+    }
+
+    private fun setConnectionStatus(status: String) {
+        connectionLabel.text = SeqMcpBundle.message("toolWindow.connectionTest", status)
+    }
+
+    private fun testConnection() {
+        refresh()
+        if (!projectService.isEnabledForProject() || !settings.isConfigured()) {
+            setConnectionStatus(SeqMcpBundle.message(
+                if (!projectService.isEnabledForProject()) "connection.disabled" else "connection.notConfigured",
+            ))
+            return
+        }
+        val revision = settings.connectionSettingsRevision
+        testConnectionButton.isEnabled = false
+        setConnectionStatus(SeqMcpBundle.message("connection.testing"))
+        ProgressManager.getInstance().run(object : Task.Backgroundable(
+            project, SeqMcpBundle.message("toolWindow.testConnection"), true,
+        ) {
+            override fun run(indicator: ProgressIndicator) {
+                runBlockingCancellable { apiService.searchEvents(SeqSearchRequest(filter = "", count = 1, timeoutSeconds = 15)) }
+            }
+
+            private fun finish(status: String) {
+                if (disposed || project.isDisposed) return
+                testConnectionButton.isEnabled = true
+                refresh()
+                // Do not attribute an older request's result to new server settings or credentials.
+                if (revision == settings.connectionSettingsRevision && projectService.isEnabledForProject()) {
+                    setConnectionStatus(status)
+                } else {
+                    setConnectionStatus(SeqMcpBundle.message("connection.notTested"))
+                }
+            }
+
+            override fun onSuccess() = finish(SeqMcpBundle.message("connection.success"))
+
+            override fun onThrowable(error: Throwable) = finish(SeqMcpBundle.message(
+                "connection.failed",
+                if (error is SeqApiException) error.message ?: SeqMcpBundle.message("connection.error")
+                else SeqMcpBundle.message("connection.error"),
+            ))
+
+            override fun onCancel() = finish(SeqMcpBundle.message("connection.cancelled"))
+        })
     }
 
     private fun clearSeqEvents() {
@@ -195,13 +291,19 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
             return
         }
 
+        val targetServer = settings.seqServerUrl
+        val revision = settings.connectionSettingsRevision
         val confirmed = Messages.showYesNoDialog(
             project,
-            SeqMcpBundle.message("dialog.clearSeqEvents.message"),
+            SeqMcpBundle.message("dialog.clearSeqEvents.message", targetServer),
             SeqMcpBundle.message("dialog.clearSeqEvents.title"),
             Messages.getWarningIcon(),
         ) == Messages.YES
         if (!confirmed) {
+            return
+        }
+        if (revision != settings.connectionSettingsRevision || !projectService.isEnabledForProject()) {
+            showNotification(SeqMcpBundle.message("notification.deleteSettingsChanged"), NotificationType.WARNING)
             return
         }
 
@@ -213,7 +315,12 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
             override fun run(indicator: ProgressIndicator) {
                 indicator.text = SeqMcpBundle.message("progress.clearSeqEvents")
                 runBlocking {
-                    apiService.deleteEvents()
+                    // Bind deletion to the exact server named in the confirmation, even if settings change.
+                    val key = settings.getApiKey()
+                    if (revision != settings.connectionSettingsRevision || !projectService.isEnabledForProject()) {
+                        throw SeqApiException(SeqMcpBundle.message("notification.deleteSettingsChanged"))
+                    }
+                    SeqApiClient(serverUrl = { targetServer }, apiKey = { key }).use { it.deleteEvents() }
                 }
             }
 
@@ -380,7 +487,7 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
 
     private fun renderLog(snapshot: SeqMcpLogSnapshot) {
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) {
+            if (disposed || project.isDisposed) {
                 return@invokeLater
             }
 
@@ -393,6 +500,7 @@ private class SeqMcpToolWindow(private val project: Project) : Disposable {
     }
 
     override fun dispose() {
+        disposed = true
         EditorFactory.getInstance().releaseEditor(logEditor)
     }
 }

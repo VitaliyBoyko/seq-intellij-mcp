@@ -36,7 +36,8 @@ Other entry points:
 - `src/main/resources/messages/MyBundle.properties`: localized UI strings.
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqMcpPluginTest.kt`: platform tests with fake backend/project resolver, schema and behavior checks.
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqTransportTest.kt`: production-client tests against a local TLS/WebSocket server.
-- `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqCloudIntegrationTest.kt`: opt-in live-server tests; see README for credentials and sandbox setup.
+- `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqSandboxUiTest.kt`: opt-in real Seq connection-button test; `scripts/test-seq-sandbox.py` provisions a disposable authenticated sandbox.
+- `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqCloudIntegrationTest.kt`: opt-in live-server tests; see `docs/development.md` for credentials and sandbox setup.
 - `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `gradle/wrapper/gradle-wrapper.properties`: toolchain, plugin versions, target IDE, Gradle wrapper and release configuration.
 - `.github/workflows/build.yml`: packaging, checks on the latest Linux/Windows/macOS runners, then plugin verification and REUSE license checks; `gradlepublish.yml`: Marketplace publishing; `run-ui-tests.yml`: separate manual UI workflow.
 - `.run/`: checked-in IDE run configurations.
@@ -61,7 +62,7 @@ Gradle test JVMs disable bundled Code Provenance analytics, whose background pro
 
 Use `./gradlew runIde` for manual settings/tool-window/MCP checks in a sandbox IDE. Test with the plugin enabled and disabled, and with multiple open projects when changing resolution. Unit tests with the fake backend do not prove live Seq HTTP/WebSocket behavior; report when a live-server check was unavailable.
 
-Do not assume `runIdeForUiTests` is a configured local task merely because the manual UI workflow references it: the inspected build does not explicitly register that task or a UI-test dependency. Verify available tasks before using that workflow as evidence.
+The manual UI workflow runs `SeqMcpUiTest` in the IntelliJ platform test runtime. The real-sandbox workflow runs `scripts/test-seq-sandbox.py`, including `sandboxUiTest` and `cloudIntegrationTest`. These exercise Swing controls and real transport but do not automate the full IDE desktop. See `docs/development.md` for setup and limitations.
 
 There is no npm, Composer or standalone server build here. Preserve the README's `<!-- Plugin description -->` markers: Gradle extracts that section into the plugin description and fails if markers are missing.
 
