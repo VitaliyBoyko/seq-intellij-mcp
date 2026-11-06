@@ -9,6 +9,7 @@ import com.intellij.notification.Notifications
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TestDialog
@@ -16,6 +17,10 @@ import com.intellij.openapi.ui.TestDialogManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.vitaliiboiko.seqmcp.services.SeqApiClient
+import com.vitaliiboiko.seqmcp.services.SeqApiException
+import com.vitaliiboiko.seqmcp.services.SeqSearchRequest
+import kotlinx.serialization.json.JsonArray
 import com.vitaliiboiko.seqmcp.services.SeqMcpLogService
 import com.vitaliiboiko.seqmcp.services.SeqMcpProjectSettingsService
 import com.vitaliiboiko.seqmcp.services.SeqMcpSettingsService
@@ -76,7 +81,7 @@ class SeqMcpUiTest : BasePlatformTestCase() {
         panel.button("settings.workspaceKeys.add").doClick()
         assertEquals(1, workspaceRows(panel).size)
         assertFalse(panel.labels().contains(message("settings.workspaceKeys.empty")))
-        assertFalse("An incomplete row must not change persisted settings", configurable.isModified())
+        assertTrue("An added row must enable Apply so validation can explain missing fields", configurable.isModified())
         panel.button("settings.workspaceKeys.remove").doClick()
         assertTrue(workspaceRows(panel).isEmpty())
         assertTrue(panel.labels().contains(message("settings.workspaceKeys.empty")))
@@ -109,20 +114,36 @@ class SeqMcpUiTest : BasePlatformTestCase() {
         assertEquals(listOf("workspace-0", "workspace-2"), workspaceRows(panel).map { workspaceField(it).text })
     }
 
-    fun testWorkspaceApplyNormalizesDuplicatesAndIncompleteRows() {
+    fun testWorkspaceValidationRejectsInvalidRowsBeforeSavingAnySettings() {
+        settings.seqServerUrl = "https://saved.example.invalid"
+        settings.setWorkspaceApiKeyEntries(listOf(WorkspaceApiKeyEntry("saved", "synthetic-saved")))
         val (configurable, panel) = settingsPanel()
-        listOf(" workspace-a " to " synthetic-first ", "workspace-a" to "synthetic-duplicate", "" to "synthetic-orphan", "workspace-b" to "").forEach { (id, key) ->
-            panel.button("settings.workspaceKeys.add").doClick()
-            fillRow(workspaceRows(panel).last(), id, key)
+        panel.descendants().filterIsInstance<JCheckBox>().single().doClick()
+        panel.button("settings.workspaceKeys.add").doClick()
+        val row = workspaceRows(panel).last()
+        for ((id, key, error) in listOf(
+            Triple("", "synthetic-orphan", "Enter a workspace ID."),
+            Triple("other", "", "Enter an API key."),
+            Triple(" saved ", "synthetic-duplicate", "Workspace IDs must be unique."),
+        )) {
+            fillRow(row, id, key)
+            assertTrue(configurable.isModified())
+            assertTrue("Validation must appear while editing", row.labels().contains(error))
+            try {
+                configurable.apply()
+                fail("Invalid workspace rows must block Apply")
+            } catch (_: ConfigurationException) {
+                assertTrue("Expected inline error: $error", row.labels().contains(error))
+            }
+            assertTrue(projectSettings.enabled)
+            assertEquals("https://saved.example.invalid", settings.seqServerUrl)
+            assertEquals(listOf(WorkspaceApiKeyEntry("saved", "synthetic-saved")), settings.workspaceApiKeyEntries())
         }
+        fillRow(row, " other ", " synthetic-other ")
+        assertFalse(row.labels().any { it.contains("must be unique") || it.startsWith("Enter ") })
         configurable.apply()
-        assertEquals(listOf(WorkspaceApiKeyEntry("workspace-a", "synthetic-first")), settings.workspaceApiKeyEntries())
-        configurable.reset()
-        assertEquals(1, workspaceRows(panel).size)
-        panel.button("settings.workspaceKeys.remove").doClick()
-        configurable.apply()
-        assertTrue(settings.workspaceApiKeyEntries().isEmpty())
-        assertNull(settings.getApiKey("workspace-a"))
+        assertEquals(listOf("saved", "other"), settings.workspaceApiKeyEntries().map { it.workspaceId })
+        assertFalse(configurable.isModified())
     }
 
     fun testSettingsResetDiscardsEditsAndApplyPersistsProjectCheckbox() {
@@ -148,7 +169,7 @@ class SeqMcpUiTest : BasePlatformTestCase() {
 
     fun testToolWindowButtonsHaveEqualGridBoundsAndTooltips() {
         val panel = toolWindowPanel()
-        val actions = listOf("toolWindow.fetchLast10Events", "toolWindow.clearSeqEvents", "toolWindow.refresh").map { panel.button(it) }
+        val actions = listOf("toolWindow.testConnection", "toolWindow.fetchLast10Events", "toolWindow.refresh", "toolWindow.openSettings").map { panel.button(it) }
         val row = actions.first().parent
         assertEquals(actions, row.components.toList())
         row.setSize(900, 60)
@@ -158,8 +179,8 @@ class SeqMcpUiTest : BasePlatformTestCase() {
             assertTrue(button.width > 0)
             assertEquals(actions.first().preferredSize, button.preferredSize)
         }
-        assertEquals(message("toolWindow.fetchLast10EventsDescription"), actions[0].toolTipText)
-        assertEquals(message("toolWindow.clearSeqEventsDescription"), actions[1].toolTipText)
+        assertEquals(message("toolWindow.fetchLast10EventsDescription"), actions[1].toolTipText)
+        assertEquals(message("toolWindow.clearSeqEventsDescription"), panel.button("toolWindow.clearSeqEvents").toolTipText)
         assertEquals(message("toolWindow.clearLogDescription"), panel.button("toolWindow.clearLog").toolTipText)
     }
 
@@ -221,10 +242,131 @@ class SeqMcpUiTest : BasePlatformTestCase() {
         }, testRootDisposable)
         panel.button("toolWindow.clearSeqEvents").doClick()
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        assertEquals(message("dialog.clearSeqEvents.message"), confirmation)
+        assertTrue(confirmation!!.contains(settings.seqServerUrl))
+        assertTrue(confirmation.contains("permanent"))
         assertEquals(1, log.recordCount())
         assertEquals(log.snapshot().text, logEditorText())
         assertTrue(notifications.isEmpty())
+    }
+
+    fun testDeletionRequiresNewConfirmationIfSettingsChangeInDialog() {
+        settings.seqServerUrl = "https://old.example.invalid"
+        val panel = toolWindowPanel()
+        TestDialogManager.setTestDialog(TestDialog {
+            settings.seqServerUrl = "https://new.example.invalid"
+            Messages.YES
+        }, testRootDisposable)
+        panel.button("toolWindow.clearSeqEvents").doClick()
+        assertEquals("Connection settings changed. Review the server and confirm deletion again.", notifications.last().content)
+        assertEquals(0, log.recordCount())
+    }
+
+    fun testDeletionIsSeparateFromEverydayActionsAndClearlyNamed() {
+        val panel = toolWindowPanel()
+        val delete = panel.button("toolWindow.clearSeqEvents")
+        assertEquals("Delete all server events…", delete.text)
+        assertNotSame(panel.button("toolWindow.fetchLast10Events").parent, delete.parent)
+        assertTrue(delete.parent.parent.let { it as Container }.labels().contains("Advanced — server data"))
+    }
+
+    fun testUnconfiguredViewHasFinishedTitleAndOpensSettings() {
+        var opened = false
+        val panel = toolWindowPanel(openSettings = { opened = true })
+        assertTrue(panel.labels().contains("Seq MCP"))
+        assertFalse(panel.labels().any { it.contains("scaffold", ignoreCase = true) })
+        val configure = panel.button("toolWindow.openSettings")
+        assertEquals("Configure Seq…", configure.text)
+        configure.doClick()
+        assertTrue(opened)
+    }
+
+    fun testConnectionButtonReportsActualSuccessAndInvalidatesAfterCredentialChange() {
+        settings.seqServerUrl = "https://seq.example.invalid"
+        var recordedRequest: SeqSearchRequest? = null
+        val client = object : SeqApiClient({ settings.seqServerUrl }, { null }) {
+            override suspend fun searchEvents(request: SeqSearchRequest): JsonArray {
+                recordedRequest = request
+                assertFalse(javax.swing.SwingUtilities.isEventDispatchThread())
+                return JsonArray(emptyList())
+            }
+        }
+        val panel = toolWindowPanel(client)
+        assertTrue(panel.labels().contains("Configuration: Configured without API key"))
+        assertTrue(panel.labels().contains("Connection test: Not tested"))
+        panel.button("toolWindow.testConnection").doClick()
+        PlatformTestUtil.waitWithEventsDispatching("Connection result", { panel.labels().contains("Connection test: Successful") }, 10)
+        assertEquals(1, recordedRequest!!.count)
+        assertTrue(panel.button("toolWindow.testConnection").isEnabled)
+        settings.setApiKey("synthetic-rotated")
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertTrue(panel.labels().contains("Connection test: Not tested"))
+    }
+
+    fun testConnectionFailureIsVisibleAndCanBeRetried() {
+        settings.seqServerUrl = "https://seq.example.invalid"
+        var fail = true
+        val client = object : SeqApiClient({ settings.seqServerUrl }, { null }) {
+            override suspend fun searchEvents(request: SeqSearchRequest): JsonArray {
+                if (fail) throw SeqApiException("Synthetic connection failure")
+                return JsonArray(emptyList())
+            }
+        }
+        val panel = toolWindowPanel(client)
+        panel.button("toolWindow.testConnection").doClick()
+        PlatformTestUtil.waitWithEventsDispatching("Connection failure", { panel.labels().contains("Connection test: Failed — Synthetic connection failure") }, 10)
+        fail = false
+        panel.button("toolWindow.testConnection").doClick()
+        PlatformTestUtil.waitWithEventsDispatching("Connection retry", { panel.labels().contains("Connection test: Successful") }, 10)
+    }
+
+    fun testConnectionRejectsMissingConfigurationAndDisabledProjectWithoutNetwork() {
+        val client = object : SeqApiClient({ settings.seqServerUrl }, { null }) {
+            override suspend fun searchEvents(request: SeqSearchRequest): JsonArray = error("Unexpected network request")
+        }
+        val panel = toolWindowPanel(client)
+        panel.button("toolWindow.testConnection").doClick()
+        assertTrue(panel.labels().contains("Connection test: Configure the Seq server URL first."))
+        settings.seqServerUrl = "https://seq.example.invalid"
+        projectSettings.enabled = false
+        panel.button("toolWindow.testConnection").doClick()
+        assertTrue(panel.labels().contains("Connection test: Enable Seq MCP for this project first."))
+    }
+
+    fun testConnectionIgnoresResultIfSettingsChangeWhileTesting() {
+        settings.seqServerUrl = "https://old.example.invalid"
+        val completed = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var wasDisabled = false
+        lateinit var panel: JComponent
+        val client = object : SeqApiClient({ settings.seqServerUrl }, { null }) {
+            override suspend fun searchEvents(request: SeqSearchRequest): JsonArray {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater {
+                    wasDisabled = !panel.button("toolWindow.testConnection").isEnabled
+                    settings.seqServerUrl = "https://new.example.invalid"
+                    completed.complete(Unit)
+                }
+                completed.await()
+                return JsonArray(emptyList())
+            }
+        }
+        panel = toolWindowPanel(client)
+        panel.button("toolWindow.testConnection").doClick()
+        PlatformTestUtil.waitWithEventsDispatching("Connection result", { completed.isCompleted && panel.button("toolWindow.testConnection").isEnabled }, 10)
+        assertTrue(wasDisabled)
+        assertTrue(panel.labels().contains("Connection test: Not tested"))
+        assertTrue(panel.labels().contains(message("toolWindow.url", settings.seqServerUrl)))
+    }
+
+    fun testCancelledConnectionCanBeRetried() {
+        settings.seqServerUrl = "https://seq.example.invalid"
+        val client = object : SeqApiClient({ settings.seqServerUrl }, { null }) {
+            override suspend fun searchEvents(request: SeqSearchRequest): JsonArray {
+                throw com.intellij.openapi.progress.ProcessCanceledException()
+            }
+        }
+        val panel = toolWindowPanel(client)
+        panel.button("toolWindow.testConnection").doClick()
+        PlatformTestUtil.waitWithEventsDispatching("Connection cancellation", { panel.labels().contains("Connection test: Cancelled") }, 10)
+        assertTrue(panel.button("toolWindow.testConnection").isEnabled)
     }
 
     private fun settingsPanel(): Pair<SeqMcpConfigurable, JComponent> {
@@ -234,11 +376,17 @@ class SeqMcpUiTest : BasePlatformTestCase() {
         return configurable to panel
     }
 
-    private fun toolWindowPanel(): JComponent {
+    private fun toolWindowPanel(client: SeqApiClient? = null, openSettings: (() -> Unit)? = null): JComponent {
         // Keep production visibility unchanged: only construction crosses the private view boundary.
         // Assertions and interactions use the real component tree and public services.
+        if (client != null) Disposer.register(testRootDisposable, Disposable { client.close() })
         val type = Class.forName("com.vitaliiboiko.seqmcp.toolWindow.SeqMcpToolWindow")
-        val view = type.getDeclaredConstructor(Project::class.java).apply { isAccessible = true }.newInstance(project)
+        val view = if (client == null && openSettings == null) {
+            type.getDeclaredConstructor(Project::class.java).apply { isAccessible = true }.newInstance(project)
+        } else {
+            type.getDeclaredConstructor(Project::class.java, SeqApiClient::class.java, Function0::class.java)
+                .apply { isAccessible = true }.newInstance(project, client ?: service<com.vitaliiboiko.seqmcp.services.SeqApiService>(), openSettings ?: {})
+        }
         views += view as Disposable
         return type.getDeclaredMethod("content").apply { isAccessible = true }.invoke(view) as JComponent
     }

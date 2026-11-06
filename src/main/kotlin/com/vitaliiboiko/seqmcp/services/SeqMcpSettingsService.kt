@@ -15,8 +15,10 @@ import com.intellij.openapi.components.SimplePersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
+import com.intellij.util.messages.Topic
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CompletionException
+import java.util.concurrent.atomic.AtomicLong
 
 @Service(Service.Level.APP)
 @State(
@@ -24,6 +26,14 @@ import java.util.concurrent.CompletionException
     storages = [Storage("SeqMcpSettings.xml")],
 )
 class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsService.State>(State()) {
+    private val connectionRevision = AtomicLong()
+    val connectionSettingsRevision: Long get() = connectionRevision.get()
+
+    private fun connectionSettingsChanged() {
+        connectionRevision.incrementAndGet()
+        ApplicationManager.getApplication().messageBus.syncPublisher(CONNECTION_SETTINGS_CHANGED).changed()
+    }
+
     @Volatile
     private var defaultApiKeyPresent = state.hasDefaultApiKey
 
@@ -44,7 +54,10 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
     var seqServerUrl: String
         get() = state.seqServerUrl.orEmpty()
         set(value) {
-            state.seqServerUrl = value
+            if (state.seqServerUrl != value) {
+                state.seqServerUrl = value
+                connectionSettingsChanged()
+            }
         }
 
     fun hasDefaultApiKey(): Boolean = defaultApiKeyPresent
@@ -69,6 +82,7 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
             }
             state.workspaceIds = nextWorkspaceIds.joinToString("\n")
         }
+        connectionSettingsChanged()
     }
 
     fun hasAnyApiKey(): Boolean = hasDefaultApiKey() || workspaceIds().isNotEmpty()
@@ -134,6 +148,8 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
     }
 
     companion object {
+        val CONNECTION_SETTINGS_CHANGED = Topic.create("Seq MCP connection settings", ConnectionSettingsListener::class.java)
+
         fun getInstance(): SeqMcpSettingsService = service<SeqMcpSettingsService>()
     }
 }
@@ -187,4 +203,8 @@ private object SeqMcpCredentialStore {
     private fun accountName(workspaceId: String?): String {
         return workspaceId?.takeIf { it.isNotBlank() }?.let { "SEQ_API_KEY::$it" } ?: DEFAULT_API_KEY_ACCOUNT
     }
+}
+
+fun interface ConnectionSettingsListener {
+    fun changed()
 }

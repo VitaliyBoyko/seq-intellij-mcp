@@ -31,7 +31,7 @@ jobs:
           SEQ_TEST_SERVER_URL: ${{ vars.SEQ_TEST_SERVER_URL }}
           SEQ_TEST_API_KEY: ${{ secrets.SEQ_TEST_API_KEY }}
           SEQ_TEST_INGEST_API_KEY: ${{ secrets.SEQ_TEST_INGEST_API_KEY }}
-        run: ./gradlew cloudIntegrationTest --no-configuration-cache --console=plain
+        run: ./gradlew cloudIntegrationTest sandboxUiTest --no-configuration-cache --console=plain
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -40,4 +40,6 @@ jobs:
           path: |
             build/reports/tests/cloudIntegrationTest
             build/test-results/cloudIntegrationTest
+            build/reports/tests/sandboxUiTest
+            build/test-results/sandboxUiTest
           if-no-files-found: ignore

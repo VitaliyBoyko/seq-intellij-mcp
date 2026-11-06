@@ -8,13 +8,18 @@ License: see LICENSE in the repository root.
 
 # Seq MCP Changelog
 
-## [Unreleased]
-
 ## [2026.1.8] - 2026-11-01
 
 ### Changed
 
 - Dependency maintenance update.
+- Separate server-wide event deletion from everyday tool-window actions and identify the target server in its confirmation.
+- Add a connection test with explicit results, a Configure Seq action and a finished tool-window title.
+- Validate workspace credentials inline and block saving incomplete or duplicate rows.
+
+### Added
+
+- UI regression tests and a disposable authenticated Seq sandbox test covering connection success, invalid credentials and recovery.
 
 ## [2026.1.7] - 2026-11-01
 
