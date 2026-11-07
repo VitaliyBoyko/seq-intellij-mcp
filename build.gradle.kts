@@ -55,7 +55,7 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdeaUltimate("263.7307.44")
+        intellijIdeaUltimate("263.7307.200")
         bundledPlugin("com.intellij.mcpServer")
         testFramework(TestFrameworkType.Platform)
     }

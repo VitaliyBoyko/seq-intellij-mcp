@@ -14,7 +14,7 @@ Use Java 25 and the Gradle wrapper included in this repository.
 ./gradlew verifyPlugin
 ```
 
-`verifyPlugin` checks compatibility against the same IDEA build used to compile the plugin (`263.7307.44`).
+`verifyPlugin` checks compatibility against the same IDEA build used to compile the plugin (`263.7307.200`).
 
 ## Transport tests
 

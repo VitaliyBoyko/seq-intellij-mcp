@@ -19,7 +19,7 @@ Search Datalust Seq logs from your IDE. **Seq MCP** is an IntelliJ IDEA plugin f
 
 ## Requirements
 
-- IntelliJ IDEA or a compatible JetBrains IDE with the bundled MCP Server plugin (`com.intellij.mcpServer`). The declared minimum IntelliJ Platform build is `263` (2026.3), with no upper bound. The build and Plugin Verifier target IntelliJ IDEA Ultimate `263.7307.44`; this does not establish compatibility with every other IDE or later build.
+- IntelliJ IDEA or a compatible JetBrains IDE with the bundled MCP Server plugin (`com.intellij.mcpServer`). The declared minimum IntelliJ Platform build is `263` (2026.3), with no upper bound. The build and Plugin Verifier target IntelliJ IDEA Ultimate `263.7307.200`; this does not establish compatibility with every other IDE or later build.
 - A reachable Datalust Seq server containing the logs you want to investigate. Use an API key with permission to read the required data when the server requires authentication; anonymous access depends on server configuration. Available operations depend on server capabilities and credential permissions.
 - An MCP-compatible AI assistant connected to the IDE's bundled MCP server. This plugin extends that server; it does not run a standalone MCP server or install Seq.
 

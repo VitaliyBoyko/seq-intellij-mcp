@@ -8,6 +8,12 @@ License: see LICENSE in the repository root.
 
 # Seq MCP Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Update the compilation and Plugin Verifier target from IntelliJ IDEA 2026.3 Beta build `263.7307.44` to stable build `263.7307.200`.
+
 ## [2026.1.8] - 2026-11-01
 
 ### Changed

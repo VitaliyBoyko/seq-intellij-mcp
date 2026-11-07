@@ -10,7 +10,7 @@ License: see LICENSE in the repository root.
 
 Seq MCP is a Kotlin JetBrains IDE plugin that exposes Seq structured-log search, Seq SQL, signals, workspaces, dashboards and related tools through the IDE's bundled MCP server. It is not a standalone MCP server or a Seq deployment.
 
-Start with [README.md](README.md), [docs/mcp-tools.md](docs/mcp-tools.md) and [CHANGELOG.md](CHANGELOG.md). The current provider registers 15 tools. The build targets IntelliJ IDEA Ultimate `263.7307.44`, requires the bundled `com.intellij.mcpServer` plugin and uses Java 25. Read build metadata before changing compatibility claims.
+Start with [README.md](README.md), [docs/mcp-tools.md](docs/mcp-tools.md) and [CHANGELOG.md](CHANGELOG.md). The current provider registers 15 tools. The build targets IntelliJ IDEA Ultimate `263.7307.200`, requires the bundled `com.intellij.mcpServer` plugin and uses Java 25. Read build metadata before changing compatibility claims.
 
 ## Architecture and navigation
 
