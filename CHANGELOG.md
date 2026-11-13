@@ -12,6 +12,8 @@ License: see LICENSE in the repository root.
 
 ### Changed
 
+- Update Gradle to 9.9.1 to address version-catalog accessor code injection and daemon-registry trust vulnerabilities.
+
 - Target stable IntelliJ IDEA 2026.3 build `263.7307.200` for compilation and plugin compatibility verification.
 
 ## [2026.1.8] - 2026-11-01

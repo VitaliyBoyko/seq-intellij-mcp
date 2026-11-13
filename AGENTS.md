@@ -46,7 +46,7 @@ Tool calls flow through the provider's schema/argument checks and enabled-projec
 
 ## Build and validation
 
-Run from the repository root using Java 25 and the checked-in Gradle wrapper (Gradle 9.8.2 at this revision). Initial runs need network/cache access for Gradle, dependencies and the target IDE.
+Run from the repository root using Java 25 and the checked-in Gradle wrapper (Gradle 9.9.1 at this revision). Initial runs need network/cache access for Gradle, dependencies and the target IDE.
 
 ```sh
 ./gradlew buildPlugin
