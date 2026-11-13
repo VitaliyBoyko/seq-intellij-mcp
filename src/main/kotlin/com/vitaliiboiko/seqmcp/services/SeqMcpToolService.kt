@@ -73,6 +73,8 @@ class SeqMcpToolService {
                 name = "SeqCreatePermalink",
                 description = "Create a stable Seq permalink for an event id",
             ),
+            SeqMcpToolDefinition("SeqGetConnectionSettings", "Inspect Seq connection settings without returning API keys"),
+            SeqMcpToolDefinition("SeqConfigureConnection", "Update the Seq server URL and Password Safe credentials"),
         )
 
         fun getInstance(): SeqMcpToolService = service<SeqMcpToolService>()

@@ -7,7 +7,7 @@ License: see LICENSE in the repository root.
 # Seq MCP: Datalust Seq logs and SQL for IntelliJ IDEA and JetBrains IDEs
 
 <!-- Plugin description -->
-Search Datalust Seq logs from your IDE. **Seq MCP** is an IntelliJ IDEA plugin for structured log search, SQL queries and AI-assisted debugging in compatible JetBrains IDEs. It exposes 15 tools through the IDE's bundled Model Context Protocol (MCP) server, so a connected AI assistant can investigate application events alongside your project.
+Search Datalust Seq logs from your IDE. **Seq MCP** is an IntelliJ IDEA plugin for structured log search, SQL queries and AI-assisted debugging in compatible JetBrains IDEs. It exposes 17 tools through the IDE's bundled Model Context Protocol (MCP) server, so a connected AI assistant can investigate application events alongside your project.
 
 ## Features
 

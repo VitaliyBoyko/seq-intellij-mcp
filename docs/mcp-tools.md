@@ -12,6 +12,8 @@ License: see LICENSE in the repository root.
 
 | Tool | Purpose |
 | --- | --- |
+| `SeqGetConnectionSettings` | Inspect the server URL and credential presence without exposing API keys. |
+| `SeqConfigureConnection` | Update the application-wide server URL and default or workspace API key. |
 | `SeqSearch` | Search events with a Seq filter; supports count, time window, signal and pagination arguments. |
 | `SeqQuerySql` | Execute Seq SQL and return JSON rows or CSV. |
 | `SeqDescribeSqlDialect` | Inspect Seq SQL syntax guidance before composing queries. |
@@ -79,3 +81,20 @@ Check the exact IDE build against the [requirements](../README.md#requirements),
 No. Verify the event producer, query filter, time window and credentials. The plugin only queries events available to the configured Seq server and identity.
 
 For problems, [open an issue](https://github.com/VitaliyBoyko/seq-intellij-mcp/issues) with the IDE build, plugin version, tool name and a reproducible request with private log data and API keys removed.
+
+## Configure connections through MCP
+
+Enable Seq MCP for the project in IDE settings first. `SeqGetConnectionSettings` returns
+`serverUrl`, `hasDefaultApiKey` and `workspaceOverrideCount`, never credentials.
+`SeqConfigureConnection` accepts optional `serverUrl`, `apiKey`, `workspace` and
+`projectPath`. Supply at least a URL or key. URLs must be absolute HTTP(S) URLs
+without embedded credentials, query strings or fragments. Omitted values are preserved.
+An empty `apiKey` removes the selected credential; omit `workspace` for the default
+key, or supply it to set/remove one workspace override. Other overrides are preserved.
+Keys are stored in JetBrains Password Safe. These settings affect all projects;
+project enablement remains controlled in IDE settings. No connection test is performed:
+use `SeqCapabilities` after configuring to check server access.
+
+Example URL-only update: `{"serverUrl":"http://localhost:5341"}`.
+API keys supplied as MCP arguments may remain in the assistant/client conversation;
+use the IDE settings UI when you need to keep credentials out of that history.
