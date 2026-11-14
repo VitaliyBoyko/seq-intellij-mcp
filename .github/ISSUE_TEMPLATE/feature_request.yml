@@ -1,37 +1,21 @@
 # SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-# SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-# SPDX-License-Identifier: MIT AND Apache-2.0
-# License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+# SPDX-License-Identifier: MIT
+# License: see LICENSE in the repository root.
 
-name: Feature request
-description: Suggest an idea for this project
-labels: ["enhancement"]
+name: Seq MCP improvement
+description: Propose a change to the plugin's tools or IDE integration.
+labels: [enhancement]
 body:
-
   - type: textarea
-    id: cause
+    id: use-case
     attributes:
-      label: Describe the need of your request
-      description: A clear and concise description of what the need or problem is.
+      label: What investigation or workflow should this support?
     validations:
       required: true
-
   - type: textarea
-    id: solution
+    id: behavior
     attributes:
-      label: Proposed solution
-      description: A clear and concise description of what you want to happen.
+      label: Proposed behavior
+      description: Include an example tool call or IDE interaction when useful.
     validations:
       required: true
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives you've considered
-      description: What did you try so far to accomplish the goal?
-
-  - type: textarea
-    id: context
-    attributes:
-      label: Additional context
-      description: Add any other context or screenshots about the feature request here.

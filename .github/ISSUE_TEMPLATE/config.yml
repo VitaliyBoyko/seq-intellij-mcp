@@ -1,13 +1,9 @@
 # SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-# SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-# SPDX-License-Identifier: MIT AND Apache-2.0
-# License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+# SPDX-License-Identifier: MIT
+# License: see LICENSE in the repository root.
 
 blank_issues_enabled: true
 contact_links:
-  - name: Documentation
-    url: https://plugins.jetbrains.com/docs/intellij/welcome.html
-    about: IntelliJ Platform plugin development docs.
-  - name: Getting Help
-    url: https://plugins.jetbrains.com/docs/intellij/getting-help.html
-    about: Check if you search for a help in plugin development.
+  - name: Seq MCP tool reference
+    url: https://github.com/VitaliyBoyko/seq-intellij-mcp/blob/master/docs/mcp-tools.md
+    about: Check tool arguments and troubleshooting before filing a report.

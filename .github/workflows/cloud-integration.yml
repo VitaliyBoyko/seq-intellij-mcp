@@ -26,12 +26,14 @@ jobs:
           distribution: zulu
           java-version: 25
       - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.9.1"
       - name: Run remote Seq integration tests
         env:
           SEQ_TEST_SERVER_URL: ${{ vars.SEQ_TEST_SERVER_URL }}
           SEQ_TEST_API_KEY: ${{ secrets.SEQ_TEST_API_KEY }}
           SEQ_TEST_INGEST_API_KEY: ${{ secrets.SEQ_TEST_INGEST_API_KEY }}
-        run: ./gradlew cloudIntegrationTest sandboxUiTest --no-configuration-cache --console=plain
+        run: gradle cloudIntegrationTest sandboxUiTest --no-configuration-cache --console=plain
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7

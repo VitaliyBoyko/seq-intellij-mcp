@@ -1,22 +1,16 @@
 # SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-# SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-# SPDX-License-Identifier: MIT AND Apache-2.0
-# License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
-
-# Dependabot configuration:
-# https://docs.github.com/en/free-pro-team@latest/github/administering-a-repository/configuration-options-for-dependency-updates
+# SPDX-License-Identifier: MIT
+# License: see LICENSE in the repository root.
 
 version: 2
 updates:
-  # Maintain dependencies for Gradle dependencies
-  - package-ecosystem: "gradle"
-    directory: "/"
-    target-branch: "master"
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: master
     schedule:
-      interval: "daily"
-  # Maintain dependencies for GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    target-branch: "master"
+      interval: daily
+  - package-ecosystem: gradle
+    directory: /
+    target-branch: master
     schedule:
-      interval: "daily"
+      interval: daily

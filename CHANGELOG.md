@@ -17,6 +17,9 @@ License: see LICENSE in the repository root.
 
 ### Changed
 
+- Use MIT for repository source after removing the bundled Gradle wrapper and replacing remaining template helpers and documents.
+- Require an external Gradle 9.9.1 installation; CI installs the pinned version and local commands use `gradle`.
+
 - Split MCP tool registration, domain handlers, project routing and shared protocol helpers into focused files.
 - Update Gradle to 9.9.1 to address version-catalog accessor code injection and daemon-registry trust vulnerabilities.
 - Target stable IntelliJ IDEA 2026.3 build `263.7307.200` for compilation and plugin compatibility verification.

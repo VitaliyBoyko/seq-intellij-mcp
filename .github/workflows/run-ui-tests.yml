@@ -1,10 +1,6 @@
 # SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-# SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-# SPDX-License-Identifier: MIT AND Apache-2.0
-# License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
-
-# Runs the real Swing component tests in the IntelliJ platform test framework.
-# No external Seq server or robot-server plugin is required.
+# SPDX-License-Identifier: MIT
+# License: see LICENSE in the repository root.
 
 name: Run UI Tests
 on:
@@ -21,25 +17,23 @@ jobs:
 
     steps:
 
-      # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v7
 
-      # Set up the Java environment for the next steps
       - name: Setup Java
         uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 25
 
-      # Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
+          gradle-version: "9.9.1"
           cache-read-only: true
 
       - name: Test buttons and workspace grid
-        run: ./gradlew test --tests 'com.vitaliiboiko.seqmcp.SeqMcpUiTest' --rerun-tasks
+        run: gradle test --tests 'com.vitaliiboiko.seqmcp.SeqMcpUiTest' --rerun-tasks
 
       - name: Upload test reports
         if: always()
