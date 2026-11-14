@@ -23,6 +23,16 @@ import com.vitaliiboiko.seqmcp.services.SeqMcpToolService
 import com.vitaliiboiko.seqmcp.services.WorkspaceApiKeyEntry
 import com.vitaliiboiko.seqmcp.services.toWebSocketUri
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.testFramework.PlatformTestUtil
+import com.vitaliiboiko.seqmcp.mcp.selectOpenProject
+import com.vitaliiboiko.seqmcp.services.ConnectionSettingsListener
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -36,6 +46,261 @@ import java.nio.file.Path
 import java.time.Instant
 
 class SeqMcpPluginTest : BasePlatformTestCase() {
+
+    fun testEnableIntegrationThenConfigureConnection() {
+        val settings = resetSettings()
+        val projectSettings = project.service<SeqMcpProjectSettingsService>()
+        projectSettings.enabled = false
+        var requestedPath: String? = null
+        val provider = SeqMcpToolsProvider(
+            RecordingBackend(),
+            enabledProjectResolver = { project.takeIf { projectSettings.enabled } },
+            openProjectResolver = { requestedPath = it; project },
+        )
+        try {
+            runBlocking {
+                assertTrue(provider.findTool("SeqConfigureConnection").call(buildJsonObject {
+                    put("serverUrl", JsonPrimitive("https://seq.example"))
+                }).isError)
+            }
+            PlatformTestUtil.waitForFuture(CompletableFuture.supplyAsync {
+                runBlocking {
+                    repeat(2) {
+                        val result = provider.findTool("SeqEnableIntegration").call(buildJsonObject {
+                            put("projectPath", JsonPrimitive("/selected"))
+                        })
+                        assertFalse(result.isError)
+                        assertEquals("true", result.structuredContent!!["enabled"]!!.jsonPrimitive.content)
+                    }
+                }
+            }, 10_000)
+            assertEquals("/selected", requestedPath)
+            assertTrue(projectSettings.enabled)
+            assertEquals("", settings.seqServerUrl)
+            runBlocking {
+                assertFalse(provider.findTool("SeqConfigureConnection").call(buildJsonObject {
+                    put("serverUrl", JsonPrimitive("https://seq.example"))
+                }).isError)
+            }
+        } finally {
+            resetSettings()
+        }
+    }
+
+    fun testEnableIntegrationRejectsUnresolvedProject() = runBlocking {
+        resetSettings()
+        project.service<SeqMcpProjectSettingsService>().enabled = false
+        try {
+            val provider = SeqMcpToolsProvider(RecordingBackend(), openProjectResolver = { null })
+            assertTrue(provider.findTool("SeqEnableIntegration").call(buildJsonObject {
+                put("projectPath", JsonPrimitive("/not-open"))
+            }).isError)
+            assertFalse(project.service<SeqMcpProjectSettingsService>().enabled)
+            assertNull(selectOpenProject(listOf(project), project, "/not-open"))
+            assertNull(selectOpenProject(emptyList(), null, null))
+            assertSame(project, selectOpenProject(listOf(project), null, null))
+            val other = com.intellij.openapi.project.ProjectManager.getInstance().defaultProject
+            assertNull(selectOpenProject(listOf(project, other), null, null))
+            assertSame(project, selectOpenProject(listOf(project, other), project, null))
+            assertSame(project, selectOpenProject(listOf(project, other), other, project.basePath))
+        } finally {
+            resetSettings()
+        }
+    }
+
+    fun testConnectionToolsHideUnsafePersistedUrls() = runBlocking {
+        val settings = resetSettings()
+        try {
+            for (url in listOf("https://user:secret@seq.example", "https://seq.example/?apiKey=secret", "https://seq.example/#secret")) {
+                settings.seqServerUrl = url
+                for (name in listOf("SeqGetConnectionSettings", "SeqConfigureConnection")) {
+                    val result = createToolsProvider(RecordingBackend()).findTool(name).call(buildJsonObject {
+                        if (name == "SeqConfigureConnection") put("apiKey", JsonPrimitive("synthetic-key"))
+                    })
+                    assertFalse(result.isError)
+                    assertEquals("", result.structuredContent!!["serverUrl"]!!.jsonPrimitive.content)
+                    assertFalse(result.toString().contains("secret"))
+                    assertEquals(url, settings.seqServerUrl)
+                }
+            }
+        } finally {
+            resetSettings()
+        }
+    }
+
+    fun testMultilineWorkspaceRejectedWithoutMutation() = runBlocking {
+        val settings = resetSettings()
+        try {
+            settings.setApiKey("existing", "team")
+            for (workspace in listOf("team\nprod", "team\rprod", "team\r\nprod", "team\n")) {
+                val result = createToolsProvider(RecordingBackend()).findTool("SeqConfigureConnection").call(buildJsonObject {
+                    put("workspace", JsonPrimitive(workspace))
+                    put("apiKey", JsonPrimitive("synthetic-key"))
+                    put("serverUrl", JsonPrimitive("https://seq.example"))
+                })
+                assertTrue(result.isError)
+                assertNull(settings.getApiKey(workspace))
+                assertEquals(1, settings.workspaceOverrideCount())
+                assertEquals(listOf(WorkspaceApiKeyEntry("team", "existing")), settings.workspaceApiKeyEntries())
+                assertEquals("", settings.seqServerUrl)
+            }
+        } finally {
+            resetSettings()
+        }
+    }
+
+    fun testConcurrentWorkspaceUpdatesPreserveAllMetadata() = runBlocking {
+        val settings = resetSettings()
+        try {
+            (1..16).map { index ->
+                async(Dispatchers.Default) {
+                    val result = createToolsProvider(RecordingBackend()).findTool("SeqConfigureConnection").call(buildJsonObject {
+                        put("workspace", JsonPrimitive("team-$index"))
+                        put("apiKey", JsonPrimitive("synthetic-$index"))
+                    })
+                    assertFalse(result.isError)
+                }
+            }.awaitAll()
+            assertEquals(16, settings.workspaceOverrideCount())
+            assertEquals((1..16).map { "team-$it" }.toSet(), settings.workspaceApiKeyEntries().map { it.workspaceId }.toSet())
+        } finally {
+            resetSettings()
+        }
+    }
+
+    fun testConnectionUpdateSerializesCredentialsUrlAndSnapshot() {
+        val settings = resetSettings()
+        val keyWritten = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val subscription = ApplicationManager.getApplication().messageBus.connect(testRootDisposable)
+        subscription.subscribe(SeqMcpSettingsService.CONNECTION_SETTINGS_CHANGED, ConnectionSettingsListener {
+            if (Thread.currentThread().name == "seq-update-a") {
+                keyWritten.countDown()
+                check(release.await(10, TimeUnit.SECONDS))
+            }
+        })
+        val first = CompletableFuture.supplyAsync {
+            Thread.currentThread().name = "seq-update-a"
+            try {
+                settings.updateConnection("https://a.example", "key-a", null)
+            } finally {
+                Thread.currentThread().name = "seq-update-finished"
+            }
+        }
+        try {
+            assertTrue(keyWritten.await(10, TimeUnit.SECONDS))
+            val second = CompletableFuture.supplyAsync {
+                secondStarted.countDown()
+                settings.updateConnection("https://b.example", "key-b", null)
+            }
+            assertTrue(secondStarted.await(10, TimeUnit.SECONDS))
+            try {
+                second.get(200, TimeUnit.MILLISECONDS)
+                fail("Second settings update must wait for the complete first update")
+            } catch (_: java.util.concurrent.TimeoutException) {
+                // The credential write, URL and summary share one service lock.
+            } finally {
+                release.countDown()
+            }
+            assertEquals("https://a.example", first.get(10, TimeUnit.SECONDS).serverUrl)
+            assertEquals("https://b.example", second.get(10, TimeUnit.SECONDS).serverUrl)
+            assertEquals("https://b.example", settings.seqServerUrl)
+            assertEquals("key-b", settings.getApiKey())
+        } finally {
+            release.countDown()
+            first.get(10, TimeUnit.SECONDS)
+            subscription.disconnect()
+            resetSettings()
+        }
+    }
+
+    fun testConfigureConnectionStoresKeysAndPreservesOmittedSettings() = runBlocking {
+        val settings = resetSettings()
+        try {
+            val provider = createToolsProvider(RecordingBackend())
+            val configure = provider.findTool("SeqConfigureConnection")
+            val result = configure.call(buildJsonObject {
+                put("serverUrl", JsonPrimitive(" https://seq.example.test/base "))
+                put("apiKey", JsonPrimitive("test-secret"))
+            })
+            assertFalse(result.isError)
+            assertEquals("https://seq.example.test/base", settings.seqServerUrl)
+            assertEquals("test-secret", settings.getApiKey())
+            assertFalse(result.structuredContent.toString().contains("test-secret"))
+            configure.call(buildJsonObject {
+                put("workspace", JsonPrimitive("team"))
+                put("apiKey", JsonPrimitive("workspace-secret"))
+            }).also { assertFalse(it.isError) }
+            assertEquals("workspace-secret", settings.getApiKey("team"))
+            assertEquals("test-secret", settings.getApiKey())
+            configure.call(buildJsonObject {
+                put("serverUrl", JsonPrimitive("http://localhost:5341"))
+            }).also { assertFalse(it.isError) }
+            assertEquals("test-secret", settings.getApiKey())
+            assertEquals("workspace-secret", settings.getApiKey("team"))
+            val status = provider.findTool("SeqGetConnectionSettings").call(buildJsonObject {})
+            assertFalse(status.isError)
+            assertEquals("true", status.structuredContent!!["hasDefaultApiKey"]!!.jsonPrimitive.content)
+            assertEquals("1", status.structuredContent!!["workspaceOverrideCount"]!!.jsonPrimitive.content)
+            assertFalse(status.structuredContent.toString().contains("secret"))
+            configure.call(buildJsonObject { put("apiKey", JsonPrimitive("")) })
+            assertNull(settings.getApiKey())
+            assertEquals("workspace-secret", settings.getApiKey("team"))
+            configure.call(buildJsonObject {
+                put("workspace", JsonPrimitive("team"))
+                put("apiKey", JsonPrimitive(""))
+            })
+            assertEquals(0, settings.workspaceOverrideCount())
+            assertEquals("http://localhost:5341", settings.seqServerUrl)
+        } finally {
+            resetSettings()
+        }
+    }
+
+    fun testConfigureConnectionRejectsInvalidArgumentsBeforeMutation() = runBlocking {
+        val settings = resetSettings()
+        val tool = createToolsProvider(RecordingBackend()).findTool("SeqConfigureConnection")
+        for (url in listOf("", "relative", "ftp://host", "https://user:secret@host", "https://host?key=secret", "https://host/#secret", "https://host:99999")) {
+            val result = tool.call(buildJsonObject {
+                put("serverUrl", JsonPrimitive(url))
+                put("apiKey", JsonPrimitive("must-not-be-stored"))
+            })
+            assertTrue(result.isError)
+            assertEquals("", settings.seqServerUrl)
+            assertNull(settings.getApiKey())
+            assertFalse(result.structuredContent.toString().contains("secret"))
+        }
+        for (name in listOf("serverUrl", "apiKey", "workspace")) {
+            assertTrue(tool.call(buildJsonObject {
+                put(name, JsonPrimitive(123))
+            }).isError)
+        }
+        assertTrue(tool.call(buildJsonObject {}).isError)
+        assertTrue(tool.call(buildJsonObject {
+            put("serverUrl", JsonPrimitive("https://host"))
+            put("workspace", JsonPrimitive("team"))
+        }).isError)
+        assertEquals("", settings.seqServerUrl)
+    }
+
+    fun testConnectionToolsRequireEnabledProjectAndForwardProjectPath() = runBlocking {
+        val settings = resetSettings()
+        for (name in listOf("SeqConfigureConnection", "SeqGetConnectionSettings")) {
+            var requestedPath: String? = null
+            val provider = SeqMcpToolsProvider(RecordingBackend(), enabledProjectResolver = {
+                requestedPath = it
+                null
+            })
+            val result = provider.findTool(name).call(buildJsonObject {
+                put("projectPath", JsonPrimitive("/disabled"))
+                put("serverUrl", JsonPrimitive("https://host"))
+            })
+            assertTrue(result.isError)
+            assertEquals("/disabled", requestedPath)
+            assertEquals("", settings.seqServerUrl)
+        }
+    }
 
     fun testToolCancellationIsPropagated() = runBlocking {
         val backend = object : SeqMcpBackend by RecordingBackend() {
@@ -623,6 +888,13 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
         )
     }
 
+    fun testProviderAndUiToolCatalogsStayAligned() {
+        assertEquals(
+            service<SeqMcpToolService>().supportedTools().map { it.name },
+            createToolsProvider(RecordingBackend()).getTools().map { it.descriptor.name },
+        )
+    }
+
     fun testSupportedToolsContainExpectedNames() {
         val tools = service<SeqMcpToolService>()
 
@@ -643,6 +915,9 @@ class SeqMcpPluginTest : BasePlatformTestCase() {
                 "SeqDashboardList",
                 "SeqDashboardGet",
                 "SeqCreatePermalink",
+                "SeqGetConnectionSettings",
+                "SeqConfigureConnection",
+                "SeqEnableIntegration",
             ),
             tools.supportedTools().map { it.name },
         )

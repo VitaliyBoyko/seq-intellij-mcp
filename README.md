@@ -7,7 +7,7 @@ License: see LICENSE in the repository root.
 # Seq MCP: Datalust Seq logs and SQL for IntelliJ IDEA and JetBrains IDEs
 
 <!-- Plugin description -->
-Search Datalust Seq logs from your IDE. **Seq MCP** is an IntelliJ IDEA plugin for structured log search, SQL queries and AI-assisted debugging in compatible JetBrains IDEs. It exposes 15 tools through the IDE's bundled Model Context Protocol (MCP) server, so a connected AI assistant can investigate application events alongside your project.
+Search Datalust Seq logs from your IDE. **Seq MCP** is an IntelliJ IDEA plugin for structured log search, SQL queries and AI-assisted debugging in compatible JetBrains IDEs. It exposes 18 tools through the IDE's bundled Model Context Protocol (MCP) server, so a connected AI assistant can investigate application events alongside your project.
 
 ## Features
 
@@ -27,8 +27,8 @@ Search Datalust Seq logs from your IDE. **Seq MCP** is an IntelliJ IDEA plugin f
 
 1. Install **Seq MCP** from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/31358-seq-mcp) in a compatible IDE.
 2. Enable the IDE's bundled MCP server and connect your assistant using the [JetBrains MCP server setup guide](https://www.jetbrains.com/help/idea/mcp-server.html).
-3. Open `Settings | Tools | Seq MCP` and check `Enable for this project` for the project you want to investigate.
-4. Enter your Seq server's base URL in `SEQ_SERVER_URL` and configure `SEQ_API_KEY` or workspace-specific keys as needed. These are plugin settings fields, not required environment variables. Apply the settings.
+3. Ask your assistant to call `SeqEnableIntegration` for the project you want to investigate, or open `Settings | Tools | Seq MCP` and check `Enable for this project`.
+4. Ask your assistant to call `SeqConfigureConnection` with the server URL and credentials, or enter them in the `SEQ_SERVER_URL`, `SEQ_API_KEY` and workspace-specific key fields in IDE settings and apply. These fields are plugin settings, not required environment variables.
 5. Wait for project indexing to finish, then ask your connected assistant to search recent errors or run a Seq SQL query.
 
 See the [MCP tools, query examples and troubleshooting](https://github.com/VitaliyBoyko/seq-intellij-mcp/blob/master/docs/mcp-tools.md). Visit the [project repository](https://github.com/VitaliyBoyko/seq-intellij-mcp) or [report an issue](https://github.com/VitaliyBoyko/seq-intellij-mcp/issues) with your IDE build, plugin version and failing tool name, omitting API keys and private log data.

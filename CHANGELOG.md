@@ -10,11 +10,22 @@ License: see LICENSE in the repository root.
 
 ## [2026.1.9] - 2026-11-07
 
+### Added
+
+- Inspect and configure Seq connections through MCP with secret-free results and Password Safe credential storage.
+- Enable Seq MCP for an open project through a separate `SeqEnableIntegration` tool before configuring the connection.
+
 ### Changed
 
+- Split MCP tool registration, domain handlers, project routing and shared protocol helpers into focused files.
 - Update Gradle to 9.9.1 to address version-catalog accessor code injection and daemon-registry trust vulnerabilities.
-
 - Target stable IntelliJ IDEA 2026.3 build `263.7307.200` for compilation and plugin compatibility verification.
+
+### Fixed
+
+- Serialize connection updates and IDE settings saves to keep credentials, server URLs and workspace metadata consistent.
+- Hide unsafe persisted server URLs in connection tool results.
+- Reject multiline workspace credential identifiers before saving.
 
 ## [2026.1.8] - 2026-11-01
 
