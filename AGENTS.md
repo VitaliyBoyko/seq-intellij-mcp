@@ -10,7 +10,7 @@ License: see LICENSE in the repository root.
 
 Seq MCP is a Kotlin JetBrains IDE plugin that exposes Seq structured-log search, Seq SQL, signals, workspaces, dashboards and related tools through the IDE's bundled MCP server. It is not a standalone MCP server or a Seq deployment.
 
-Start with [README.md](README.md), [docs/mcp-tools.md](docs/mcp-tools.md) and [CHANGELOG.md](CHANGELOG.md). The current provider registers 15 tools. The build targets IntelliJ IDEA Ultimate `263.7307.200`, requires the bundled `com.intellij.mcpServer` plugin and uses Java 25. Read build metadata before changing compatibility claims.
+Start with [README.md](README.md), [docs/mcp-tools.md](docs/mcp-tools.md) and [CHANGELOG.md](CHANGELOG.md). The current provider registers 18 tools. The build targets IntelliJ IDEA Ultimate `263.7307.200`, requires the bundled `com.intellij.mcpServer` plugin and uses Java 25. Read build metadata before changing compatibility claims.
 
 ## Architecture and navigation
 
@@ -38,7 +38,7 @@ Other entry points:
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqTransportTest.kt`: production-client tests against a local TLS/WebSocket server.
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqSandboxUiTest.kt`: opt-in real Seq connection-button test; `scripts/test-seq-sandbox.py` provisions a disposable authenticated sandbox.
 - `src/test/kotlin/com/vitaliiboiko/seqmcp/SeqCloudIntegrationTest.kt`: opt-in live-server tests; see `docs/development.md` for credentials and sandbox setup.
-- `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `gradle/wrapper/gradle-wrapper.properties`: toolchain, plugin versions, target IDE, Gradle wrapper and release configuration.
+- `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`: toolchain, plugin versions, target IDE, required Gradle version and release configuration.
 - `.github/workflows/build.yml`: packaging, checks on the latest Linux/Windows/macOS runners, then plugin verification and REUSE license checks; `gradlepublish.yml`: Marketplace publishing; `run-ui-tests.yml`: separate manual UI workflow.
 - `.run/`: checked-in IDE run configurations.
 
@@ -46,21 +46,21 @@ Tool calls flow through the provider's schema/argument checks and enabled-projec
 
 ## Build and validation
 
-Run from the repository root using Java 25 and the checked-in Gradle wrapper (Gradle 9.9.1 at this revision). Initial runs need network/cache access for Gradle, dependencies and the target IDE.
+Run from the repository root using Java 25 and an installed Gradle 9.9.1 on `PATH` (also selected as the local Gradle installation in the IDE). The repository does not bundle a Gradle wrapper. Initial runs need network/cache access for Gradle, dependencies and the target IDE.
 
 ```sh
-./gradlew buildPlugin
-./gradlew check
-./gradlew verifyPlugin
+gradle buildPlugin
+gradle check
+gradle verifyPlugin
 ```
 
-These are the main CI tasks. `buildPlugin` packages the plugin; `check` runs verification including tests; `verifyPlugin` checks compatibility with the configured current IDEA build, not every JetBrains IDE/version. A targeted test invocation is `./gradlew test --tests 'com.vitaliiboiko.seqmcp.SeqMcpPluginTest'`.
+These are the main CI tasks. `buildPlugin` packages the plugin; `check` runs verification including tests; `verifyPlugin` checks compatibility with the configured current IDEA build, not every JetBrains IDE/version. A targeted test invocation is `gradle test --tests 'com.vitaliiboiko.seqmcp.SeqMcpPluginTest'`.
 
 CI runs `check` on `ubuntu-latest`, `windows-latest` and `macos-latest` without cached test results. Plugin verification and `reuse lint` run after every OS passes; both must pass before a release draft is prepared. Run `reuse lint` locally to validate SPDX notices and the license texts under `LICENSES/`.
 
 Gradle test JVMs disable bundled Code Provenance analytics, whose background process can retain fixture directories during Windows teardown. This setting does not affect the packaged plugin or `runIde`.
 
-Use `./gradlew runIde` for manual settings/tool-window/MCP checks in a sandbox IDE. Test with the plugin enabled and disabled, and with multiple open projects when changing resolution. Unit tests with the fake backend do not prove live Seq HTTP/WebSocket behavior; report when a live-server check was unavailable.
+Use `gradle runIde` for manual settings/tool-window/MCP checks in a sandbox IDE. Test with the plugin enabled and disabled, and with multiple open projects when changing resolution. Unit tests with the fake backend do not prove live Seq HTTP/WebSocket behavior; report when a live-server check was unavailable.
 
 The manual UI workflow runs `SeqMcpUiTest` in the IntelliJ platform test runtime. The real-sandbox workflow runs `scripts/test-seq-sandbox.py`, including `sandboxUiTest` and `cloudIntegrationTest`. These exercise Swing controls and real transport but do not automate the full IDE desktop. See `docs/development.md` for setup and limitations.
 

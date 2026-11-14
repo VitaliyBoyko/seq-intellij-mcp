@@ -1,11 +1,16 @@
 <!--
 SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-SPDX-License-Identifier: MIT AND Apache-2.0
-License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+SPDX-License-Identifier: MIT
+License: see LICENSE in the repository root.
 -->
 
-## Code of Conduct
+# Community conduct
 
-This project and the corresponding community is governed by the [JetBrains Open Source and Community Code of Conduct](https://confluence.jetbrains.com/display/ALL/JetBrains+Open+Source+and+Community+Code+of+Conduct). Please make sure you read it. 
+Keep discussions about Seq MCP respectful and focused on the work. Explain problems
+with reproducible examples, give others room to disagree, and avoid personal attacks,
+harassment, discrimination and sharing private information.
 
+Maintainers may edit or remove abusive content, close disruptive discussions, or
+restrict participation. Report problems privately to the repository owner through
+the contact information on their GitHub profile. Include only the information needed
+to investigate; never post credentials or private Seq logs.

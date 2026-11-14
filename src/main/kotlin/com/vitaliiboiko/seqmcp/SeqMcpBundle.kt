@@ -1,22 +1,23 @@
 // SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-// SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-// SPDX-License-Identifier: MIT AND Apache-2.0
-// License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+// SPDX-License-Identifier: MIT
+// License: see LICENSE in the repository root.
 
 package com.vitaliiboiko.seqmcp
 
-import com.intellij.DynamicBundle
-import org.jetbrains.annotations.NonNls
+import com.intellij.BundleBase
 import org.jetbrains.annotations.PropertyKey
+import java.util.Locale
+import java.util.ResourceBundle
 
-@NonNls
-private const val BUNDLE = "messages.MyBundle"
-
+/** Resolve Seq UI messages using the platform's message formatting rules. */
 object SeqMcpBundle {
-
-    private val bundle = DynamicBundle(SeqMcpBundle::class.java, BUNDLE)
-
     @JvmStatic
-    fun message(@PropertyKey(resourceBundle = BUNDLE) key: String, vararg params: Any) =
-        bundle.getMessage(key, *params)
+    fun message(@PropertyKey(resourceBundle = "messages.MyBundle") key: String, vararg params: Any): String {
+        val messages = ResourceBundle.getBundle(
+            "messages.MyBundle",
+            Locale.getDefault(),
+            SeqMcpBundle::class.java.classLoader,
+        )
+        return BundleBase.message(messages, key, *params)
+    }
 }

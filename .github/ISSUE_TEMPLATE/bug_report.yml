@@ -1,68 +1,27 @@
 # SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-# SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-# SPDX-License-Identifier: MIT AND Apache-2.0
-# License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+# SPDX-License-Identifier: MIT
+# License: see LICENSE in the repository root.
 
-name: Bug report
-description: Create a report to help us improve
-labels: ["bug"]
+name: Seq MCP bug
+description: Report a problem with the IDE plugin or a Seq MCP tool.
+labels: [bug]
 body:
-
-  - type: textarea
-    id: issue
-    attributes:
-      label: What happened?
-      description: A clear and concise description of what the bug is.
-    validations:
-      required: true
-
-  - type: textarea
-    id: logs
-    attributes:
-      label: Relevant log output or stack trace
-      description: |
-        Please copy and paste any relevant log output.
-        Add the full stack trace if available.
-        If possible, run the failing task with `--stacktrace` flag.
-        
-        *This will be automatically formatted into code, so there is no need for backticks.*
-      render: shell
-
-  - type: textarea
-    id: steps
-    attributes:
-      label: Steps to reproduce
-      description: Steps to reproduce the behavior – provide your build configuration.
-    validations:
-      required: true
-
   - type: input
-    id: version
+    id: environment
     attributes:
-      label: Gradle IntelliJ Plugin version
-      placeholder: 1.16.0
+      label: Plugin version, IDE build and operating system
     validations:
       required: true
-
-  - type: input
-    id: gradle
+  - type: textarea
+    id: reproduction
     attributes:
-      label: Gradle version
-      placeholder: 8.2.1
+      label: Reproduction and result
+      description: Include the tool name, sanitized arguments, expected result and actual result.
     validations:
       required: true
-
-  - type: dropdown
-    id: os
+  - type: textarea
+    id: diagnostics
     attributes:
-      label: Operating System
-      options:
-        - macOS
-        - Linux
-        - Windows
-
-  - type: input
-    id: url
-    attributes:
-      label: Link to build, i.e. failing GitHub Action job
-      placeholder: https://github.com/username/project/actions/runs/1234567890
+      label: Sanitized diagnostics
+      description: Remove API keys, embedded credentials and private log data before submitting.
+      render: text

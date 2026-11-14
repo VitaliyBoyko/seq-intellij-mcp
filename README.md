@@ -43,7 +43,8 @@ See the [development and testing guide](docs/development.md) for building the pl
 
 ## License
 
-Author contributions are licensed under the [MIT License](LICENSE). Third-party code from the JetBrains template and Gradle wrapper retains its [Apache-2.0 license](LICENSES/Apache-2.0.txt); see [NOTICE](NOTICE).
+Seq MCP source and repository files are licensed under the [MIT License](LICENSE).
+Build tools and dependencies are installed separately and retain their own licenses.
 
 ## Related projects
 

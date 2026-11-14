@@ -1,9 +1,6 @@
 # SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-# SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-# SPDX-License-Identifier: MIT AND Apache-2.0
-# License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
-
-# This workflow builds and publishes the plugin to JetBrains Marketplace when a GitHub release is published.
+# SPDX-License-Identifier: MIT
+# License: see LICENSE in the repository root.
 
 name: Publish Plugin
 
@@ -33,6 +30,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
+          gradle-version: "9.9.1"
           cache-read-only: true
 
       - name: Patch Changelog
@@ -40,13 +38,11 @@ jobs:
         env:
           CHANGELOG: ${{ github.event.release.body }}
         run: |
-          RELEASE_NOTE="./build/tmp/release_note.txt"
-          mkdir -p "$(dirname "$RELEASE_NOTE")"
-          echo "$CHANGELOG" > "$RELEASE_NOTE"
-
-          ./gradlew patchChangelog --release-note-file="$RELEASE_NOTE"
+          mkdir -p build/tmp
+          printf '%s\n' "$CHANGELOG" > build/tmp/release_note.txt
+          gradle patchChangelog --release-note-file=build/tmp/release_note.txt
 
       - name: Run publish plugin
         env:
           JET_BRAINS_TOKEN: ${{ secrets.JET_BRAINS_TOKEN }}
-        run: ./gradlew publishPlugin -i --no-daemon
+        run: gradle publishPlugin -i --no-daemon

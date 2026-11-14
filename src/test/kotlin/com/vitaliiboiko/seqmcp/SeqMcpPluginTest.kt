@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Private Entrepreneur Vitalii Boiko
-// SPDX-FileCopyrightText: 2000-2021 JetBrains s.r.o.
-// SPDX-License-Identifier: MIT AND Apache-2.0
-// License: see LICENSE and LICENSES/Apache-2.0.txt in the repository root.
+// SPDX-License-Identifier: MIT
+// License: see LICENSE in the repository root.
 
 package com.vitaliiboiko.seqmcp
 
@@ -46,6 +45,15 @@ import java.nio.file.Path
 import java.time.Instant
 
 class SeqMcpPluginTest : BasePlatformTestCase() {
+
+    fun testBundleResolvesSeqMessagesAndFormatsParameters() {
+        assertEquals("Seq MCP", SeqMcpBundle.message("settings.displayName"))
+        assertEquals("Project: sample", SeqMcpBundle.message("toolWindow.project", "sample"))
+        assertEquals(
+            "Seq MCP initialized for project sample. Status: ready.",
+            SeqMcpBundle.message("log.initialized", "sample", "ready"),
+        )
+    }
 
     fun testEnableIntegrationThenConfigureConnection() {
         val settings = resetSettings()

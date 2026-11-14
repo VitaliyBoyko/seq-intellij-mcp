@@ -6,19 +6,27 @@ License: see LICENSE in the repository root.
 
 # Development and testing
 
-Use Java 25 and the Gradle wrapper included in this repository.
+Install Java 25 and Gradle 9.9.1, and put Gradle's `bin` directory on `PATH`.
+The build checks the Gradle version. CI installs the same version through
+`gradle/actions/setup-gradle`; no Gradle distribution or wrapper is bundled here.
+If importing into IntelliJ IDEA, select the local Gradle installation under
+`Settings | Build, Execution, Deployment | Build Tools | Gradle`.
+
+Obtain Gradle from its [official distribution page](https://gradle.org/releases/).
+For Gradle 9.9.1's binary ZIP, verify SHA-256 before extracting:
+`d8a18a7a841dd5df825d35a685fad6f2d7f12ac0c280e57b67c27b4a520ba228`.
 
 ```bash
-./gradlew runIde
-./gradlew check
-./gradlew verifyPlugin
+gradle runIde
+gradle check
+gradle verifyPlugin
 ```
 
 `verifyPlugin` checks compatibility against the same IDEA build used to compile the plugin (`263.7307.200`).
 
 ## Transport tests
 
-`./gradlew check` runs platform tests and the production HTTP/WebSocket client against a local TLS test server. No Seq installation or cloud credentials are needed. Coverage includes base paths, escaped filters, credential selection, SQL, TLS failures, rejected WebSocket upgrades, abnormal closes, response deadlines, cancellation, and credential forwarding protection.
+`gradle check` runs platform tests and the production HTTP/WebSocket client against a local TLS test server. No Seq installation or cloud credentials are needed. Coverage includes base paths, escaped filters, credential selection, SQL, TLS failures, rejected WebSocket upgrades, abnormal closes, response deadlines, cancellation, and credential forwarding protection.
 
 HTTP requests have a 30-second default deadline, including response body transfer. An explicit SQL `timeoutSeconds` sets the query request deadline to that value plus five seconds. WebSocket handshakes have a five-second deadline. Search timeout discards incomplete results and reports `SEARCH_TIMEOUT`; live capture finishes its five-second observation window normally. Search accepts at most 1,000 events. WebSocket text is limited to 1,048,576 characters per event and 4,194,304 characters per result; HTTP responses are limited to 8 MiB. Oversized responses fail with `RESULT_TOO_LARGE` rather than silently truncating data.
 
@@ -34,7 +42,7 @@ The runner uses pinned official Seq/Seq CLI images, accepts the Seq container EU
 
 `sandboxUiTest` exercises the real Settings controls, Password Safe, the production client and the **Test connection** button against an authenticated Seq server. It checks success, rejection of an invalid key, and recovery after correcting the key. It runs in the IntelliJ platform test runtime; it does not automate the full IDE desktop.
 
-For an existing sandbox, set `SEQ_TEST_SERVER_URL` and `SEQ_TEST_API_KEY` and run `./gradlew sandboxUiTest --no-configuration-cache`. HTTPS is required unless `SEQ_TEST_ALLOW_LOCAL_HTTP=true` explicitly enables loopback HTTP. This UI test uses the production JVM trust store; the client-only cloud tests additionally support `SEQ_TEST_CA_CERT`. Missing configuration fails the test instead of skipping it. The sandbox UI test is excluded from ordinary `test`/`check` and runs in the dedicated real-sandbox CI workflow and the manual cloud workflow.
+For an existing sandbox, set `SEQ_TEST_SERVER_URL` and `SEQ_TEST_API_KEY` and run `gradle sandboxUiTest --no-configuration-cache`. HTTPS is required unless `SEQ_TEST_ALLOW_LOCAL_HTTP=true` explicitly enables loopback HTTP. This UI test uses the production JVM trust store; the client-only cloud tests additionally support `SEQ_TEST_CA_CERT`. Missing configuration fails the test instead of skipping it. The sandbox UI test is excluded from ordinary `test`/`check` and runs in the dedicated real-sandbox CI workflow and the manual cloud workflow.
 
 ## Cloud integration tests
 
@@ -60,7 +68,7 @@ export SEQ_TEST_SERVER_URL='https://seq-test.example.com/'
 read -rsp 'Seq read API key: ' SEQ_TEST_API_KEY; echo
 read -rsp 'Seq ingest API key: ' SEQ_TEST_INGEST_API_KEY; echo
 export SEQ_TEST_API_KEY SEQ_TEST_INGEST_API_KEY
-./gradlew cloudIntegrationTest --no-configuration-cache
+gradle cloudIntegrationTest --no-configuration-cache
 unset SEQ_TEST_API_KEY SEQ_TEST_INGEST_API_KEY
 ```
 

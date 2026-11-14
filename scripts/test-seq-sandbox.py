@@ -67,7 +67,7 @@ def main():
         environment.pop("SEQ_TEST_CA_CERT", None)
         print("Authenticated disposable Seq sandbox ready; running real-server tests.", flush=True)
         result = subprocess.run([
-            "./gradlew", "sandboxUiTest", "cloudIntegrationTest", "--no-configuration-cache",
+            "gradle", "sandboxUiTest", "cloudIntegrationTest", "--no-configuration-cache",
         ], env=environment)
         return result.returncode
     finally:
