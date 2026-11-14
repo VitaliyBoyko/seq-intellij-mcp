@@ -18,6 +18,7 @@ License: see LICENSE in the repository root.
 ### Changed
 
 - Split MCP tool registration, domain handlers, project routing and shared protocol helpers into focused files.
+- Update Gradle to 9.9.1 to address version-catalog accessor code injection and daemon-registry trust vulnerabilities.
 - Target stable IntelliJ IDEA 2026.3 build `263.7307.200` for compilation and plugin compatibility verification.
 
 ### Fixed
