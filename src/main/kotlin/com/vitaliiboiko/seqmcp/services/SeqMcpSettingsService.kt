@@ -26,6 +26,12 @@ import java.util.concurrent.atomic.AtomicLong
     storages = [Storage("SeqMcpSettings.xml")],
 )
 class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsService.State>(State()) {
+    private val connectionLock = Any()
+
+    private fun <T> withSettingsLock(operation: () -> T): T = runOutsideReadAction {
+        synchronized(connectionLock) { operation() }
+    }
+
     private val connectionRevision = AtomicLong()
     val connectionSettingsRevision: Long get() = connectionRevision.get()
 
@@ -39,9 +45,11 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
 
     init {
         AppExecutorUtil.getAppExecutorService().execute {
-            val hasDefaultApiKey = !SeqMcpCredentialStore.getApiKey().isNullOrBlank()
-            defaultApiKeyPresent = hasDefaultApiKey
-            state.hasDefaultApiKey = hasDefaultApiKey
+            withSettingsLock {
+                val hasDefaultApiKey = !SeqMcpCredentialStore.getApiKey().isNullOrBlank()
+                defaultApiKeyPresent = hasDefaultApiKey
+                state.hasDefaultApiKey = hasDefaultApiKey
+            }
         }
     }
 
@@ -52,8 +60,8 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
     }
 
     var seqServerUrl: String
-        get() = state.seqServerUrl.orEmpty()
-        set(value) {
+        get() = synchronized(connectionLock) { state.seqServerUrl.orEmpty() }
+        set(value) = synchronized(connectionLock) {
             if (state.seqServerUrl != value) {
                 state.seqServerUrl = value
                 connectionSettingsChanged()
@@ -62,11 +70,14 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
 
     fun hasDefaultApiKey(): Boolean = defaultApiKeyPresent
 
-    fun getApiKey(workspaceId: String? = null): String? = runOutsideReadAction {
+    fun getApiKey(workspaceId: String? = null): String? = withSettingsLock {
         SeqMcpCredentialStore.getApiKey(workspaceId)
     }
 
-    fun setApiKey(value: String?, workspaceId: String? = null) {
+    fun setApiKey(value: String?, workspaceId: String? = null) = withSettingsLock {
+        require(workspaceId == null || ('\r' !in workspaceId && '\n' !in workspaceId)) {
+            "workspace must not contain line breaks."
+        }
         val normalizedValue = value?.trim()?.takeIf { it.isNotEmpty() }
         SeqMcpCredentialStore.setApiKey(workspaceId, normalizedValue)
 
@@ -85,10 +96,35 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
         connectionSettingsChanged()
     }
 
+    /** Serialize credentials, metadata, URL and the returned summary across all callers. */
+    fun updateConnection(serverUrl: String?, apiKey: String?, workspaceId: String?): SeqConnectionSummary = withSettingsLock {
+        if (apiKey != null) setApiKey(apiKey, workspaceId)
+        if (serverUrl != null) seqServerUrl = serverUrl
+        connectionSummary()
+    }
+
+    fun connectionSummary(): SeqConnectionSummary = withSettingsLock {
+        SeqConnectionSummary(
+            serverUrl = seqServerUrl.takeIf(::isSafeSeqServerUrl).orEmpty(),
+            hasDefaultApiKey = hasDefaultApiKey(),
+            workspaceOverrideCount = workspaceOverrideCount(),
+        )
+    }
+
+    fun applySnapshot(snapshot: SeqMcpSettingsSnapshot): SeqMcpSettingsSnapshot = withSettingsLock {
+        require(snapshot.workspaceApiKeyEntries.none { '\r' in it.workspaceId || '\n' in it.workspaceId }) {
+            "workspace must not contain line breaks."
+        }
+        setApiKey(snapshot.defaultApiKey)
+        setWorkspaceApiKeyEntries(snapshot.workspaceApiKeyEntries)
+        seqServerUrl = snapshot.seqServerUrl
+        loadSnapshot()
+    }
+
     fun hasAnyApiKey(): Boolean = hasDefaultApiKey() || workspaceIds().isNotEmpty()
 
-    fun loadSnapshot(): SeqMcpSettingsSnapshot {
-        return SeqMcpSettingsSnapshot(
+    fun loadSnapshot(): SeqMcpSettingsSnapshot = withSettingsLock {
+        return@withSettingsLock SeqMcpSettingsSnapshot(
             seqServerUrl = seqServerUrl,
             defaultApiKey = getApiKey(),
             workspaceApiKeyEntries = workspaceIds().mapNotNull { workspaceId ->
@@ -98,14 +134,17 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
         )
     }
 
-    fun workspaceApiKeyEntries(): List<WorkspaceApiKeyEntry> {
-        return workspaceIds().mapNotNull { workspaceId ->
+    fun workspaceApiKeyEntries(): List<WorkspaceApiKeyEntry> = withSettingsLock {
+        return@withSettingsLock workspaceIds().mapNotNull { workspaceId ->
             val apiKey = getApiKey(workspaceId) ?: return@mapNotNull null
             WorkspaceApiKeyEntry(workspaceId, apiKey)
         }
     }
 
-    fun setWorkspaceApiKeyEntries(entries: List<WorkspaceApiKeyEntry>) {
+    fun setWorkspaceApiKeyEntries(entries: List<WorkspaceApiKeyEntry>) = withSettingsLock {
+        require(entries.none { '\r' in it.workspaceId || '\n' in it.workspaceId }) {
+            "workspace must not contain line breaks."
+        }
         val normalized = entries
             .mapNotNull { entry ->
                 val workspaceId = entry.workspaceId.trim()
@@ -134,12 +173,12 @@ class SeqMcpSettingsService : SimplePersistentStateComponent<SeqMcpSettingsServi
         state.workspaceIds = normalized.joinToString("\n") { it.workspaceId }
     }
 
-    fun workspaceOverrideCount(): Int = workspaceIds().size
+    fun workspaceOverrideCount(): Int = withSettingsLock { workspaceIds().size }
 
     fun isConfigured(): Boolean = seqServerUrl.isNotBlank()
 
-    private fun workspaceIds(): List<String> {
-        return state.workspaceIds
+    private fun workspaceIds(): List<String> = withSettingsLock {
+        return@withSettingsLock state.workspaceIds
             .orEmpty()
             .lineSequence()
             .map(String::trim)
@@ -207,4 +246,17 @@ private object SeqMcpCredentialStore {
 
 fun interface ConnectionSettingsListener {
     fun changed()
+}
+
+data class SeqConnectionSummary(
+    val serverUrl: String,
+    val hasDefaultApiKey: Boolean,
+    val workspaceOverrideCount: Int,
+)
+
+internal fun isSafeSeqServerUrl(value: String): Boolean {
+    val uri = runCatching { java.net.URI(value) }.getOrNull() ?: return false
+    return uri.scheme?.lowercase() in setOf("http", "https") &&
+        !uri.host.isNullOrBlank() && uri.rawUserInfo == null && uri.rawQuery == null &&
+        uri.rawFragment == null && (uri.port == -1 || uri.port in 1..65535)
 }

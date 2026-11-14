@@ -75,6 +75,7 @@ class SeqMcpToolService {
             ),
             SeqMcpToolDefinition("SeqGetConnectionSettings", "Inspect Seq connection settings without returning API keys"),
             SeqMcpToolDefinition("SeqConfigureConnection", "Update the Seq server URL and Password Safe credentials"),
+            SeqMcpToolDefinition("SeqEnableIntegration", "Enable Seq MCP for an open IDE project"),
         )
 
         fun getInstance(): SeqMcpToolService = service<SeqMcpToolService>()

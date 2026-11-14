@@ -134,16 +134,15 @@ private class SeqMcpSettingsComponent {
             throw ConfigurationException(SeqMcpBundle.message("settings.workspaceKeys.invalid"))
         }
         projectSettings.enabled = enabledForProjectCheckBox.isSelected
-        settings.seqServerUrl = seqServerUrlField.text.trim()
-        settings.setApiKey(String(apiKeyField.password).trim())
-        settings.setWorkspaceApiKeyEntries(
-            workspaceRows.map { row ->
-                WorkspaceApiKeyEntry(row.workspaceId(), row.apiKey())
-            },
+        loadedSnapshot = settings.applySnapshot(
+            SeqMcpSettingsSnapshot(
+                seqServerUrlField.text.trim(),
+                String(apiKeyField.password).trim(),
+                workspaceRows.map { row -> WorkspaceApiKeyEntry(row.workspaceId(), row.apiKey()) },
+            ),
         )
         ToolWindowManager.getInstance(project).getToolWindow("Seq MCP")?.setAvailable(projectSettings.enabled)
         loadedEnabledForProject = projectSettings.enabled
-        loadedSnapshot = settings.loadSnapshot()
     }
 
     fun reset(projectSettings: SeqMcpProjectSettingsService, settings: SeqMcpSettingsService) {

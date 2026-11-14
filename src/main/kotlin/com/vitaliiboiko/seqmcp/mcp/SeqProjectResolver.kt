@@ -21,10 +21,10 @@ internal fun ensureEnabledProject(arguments: JsonObject, enabledProjectResolver:
 internal fun resolveEnabledProject(projectPath: String?): Project? {
     val openProjects = ProjectManager.getInstance().openProjects.filterNot(Project::isDisposed)
     normalizeProjectPath(projectPath)?.let { normalizedProjectPath ->
-        openProjects.firstOrNull { project ->
+        return openProjects.firstOrNull { project ->
             project.service<SeqMcpProjectSettingsService>().enabled &&
                 normalizeProjectPath(project.basePath) == normalizedProjectPath
-        }?.let { return it }
+        }
     }
 
     val activeProject = ProjectUtil.getActiveProject()
@@ -34,6 +34,22 @@ internal fun resolveEnabledProject(projectPath: String?): Project? {
 
     val enabledProjects = openProjects.filter { it.service<SeqMcpProjectSettingsService>().enabled }
     return enabledProjects.singleOrNull()
+}
+
+/** Bootstrap routing must include disabled projects, but never guess an explicit target. */
+internal fun resolveOpenProject(projectPath: String?): Project? {
+    return selectOpenProject(
+        ProjectManager.getInstance().openProjects.filterNot(Project::isDisposed),
+        ProjectUtil.getActiveProject(),
+        projectPath,
+    )
+}
+
+internal fun selectOpenProject(openProjects: List<Project>, activeProject: Project?, projectPath: String?): Project? {
+    normalizeProjectPath(projectPath)?.let { path ->
+        return openProjects.singleOrNull { normalizeProjectPath(it.basePath) == path }
+    }
+    return activeProject?.takeIf { it in openProjects } ?: openProjects.singleOrNull()
 }
 
 private fun buildProjectDisabledMessage(projectPath: String?): String {

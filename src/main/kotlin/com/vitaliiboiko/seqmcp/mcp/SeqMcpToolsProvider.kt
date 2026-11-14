@@ -14,13 +14,14 @@ import com.vitaliiboiko.seqmcp.services.SeqMcpBackend
 class SeqMcpToolsProvider @JvmOverloads constructor(
     private val backend: SeqMcpBackend = service<SeqApiService>(),
     private val enabledProjectResolver: (String?) -> Project? = ::resolveEnabledProject,
+    private val openProjectResolver: (String?) -> Project? = ::resolveOpenProject,
 ) : McpToolsProvider {
     override fun getTools(): List<McpTool> {
         val event = SeqEventTools(backend, enabledProjectResolver)
         val sql = SeqSqlTools(backend, enabledProjectResolver)
         val resource = SeqResourceTools(backend, enabledProjectResolver)
         val identity = SeqIdentityTools(backend, enabledProjectResolver)
-        val connection = SeqConnectionTools(enabledProjectResolver)
+        val connection = SeqConnectionTools(enabledProjectResolver, openProjectResolver)
         return listOf(
             event.seqSearchTool(),
             sql.seqQuerySqlTool(),
@@ -39,6 +40,7 @@ class SeqMcpToolsProvider @JvmOverloads constructor(
             identity.seqCreatePermalinkTool(),
             connection.connectionSettingsTool(false),
             connection.connectionSettingsTool(true),
+            connection.enableIntegrationTool(),
         )
     }
 }

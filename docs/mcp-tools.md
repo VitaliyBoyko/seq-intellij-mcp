@@ -14,6 +14,7 @@ License: see LICENSE in the repository root.
 | --- | --- |
 | `SeqGetConnectionSettings` | Inspect the server URL and credential presence without exposing API keys. |
 | `SeqConfigureConnection` | Update the application-wide server URL and default or workspace API key. |
+| `SeqEnableIntegration` | Enable Seq MCP for an open project before configuring or querying. |
 | `SeqSearch` | Search events with a Seq filter; supports count, time window, signal and pagination arguments. |
 | `SeqQuerySql` | Execute Seq SQL and return JSON rows or CSV. |
 | `SeqDescribeSqlDialect` | Inspect Seq SQL syntax guidance before composing queries. |
@@ -84,15 +85,25 @@ For problems, [open an issue](https://github.com/VitaliyBoyko/seq-intellij-mcp/i
 
 ## Configure connections through MCP
 
-Enable Seq MCP for the project in IDE settings first. `SeqGetConnectionSettings` returns
+Call `SeqEnableIntegration` first, or enable Seq MCP for the project in IDE settings.
+This separate tool works while the integration is disabled. It accepts optional
+`projectPath` and returns `enabled` and the selected `projectPath`. An explicit path
+must match an open project; otherwise it selects the active project or the sole open
+project. Ambiguous targets fail without enabling a project. Repeated calls are safe.
+For example, call `SeqEnableIntegration({"projectPath":"/absolute/project/path"})`,
+then `SeqConfigureConnection` for the same project. `SeqGetConnectionSettings` returns
 `serverUrl`, `hasDefaultApiKey` and `workspaceOverrideCount`, never credentials.
+An absent URL or an unsafe URL previously saved in IDE settings is returned as an
+empty string; the saved value is preserved until explicitly replaced.
 `SeqConfigureConnection` accepts optional `serverUrl`, `apiKey`, `workspace` and
 `projectPath`. Supply at least a URL or key. URLs must be absolute HTTP(S) URLs
 without embedded credentials, query strings or fragments. Omitted values are preserved.
 An empty `apiKey` removes the selected credential; omit `workspace` for the default
-key, or supply it to set/remove one workspace override. Other overrides are preserved.
+key, or supply a non-empty, single-line workspace name to set/remove one workspace
+override. Other overrides are preserved.
 Keys are stored in JetBrains Password Safe. These settings affect all projects;
-project enablement remains controlled in IDE settings. No connection test is performed:
+project enablement is separate, through `SeqEnableIntegration` or IDE settings.
+No connection test is performed:
 use `SeqCapabilities` after configuring to check server access.
 
 Example URL-only update: `{"serverUrl":"http://localhost:5341"}`.
