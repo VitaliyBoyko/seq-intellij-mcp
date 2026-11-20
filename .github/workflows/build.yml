@@ -41,7 +41,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.9.1"
+          gradle-version: "9.9.2"
 
       - name: Build plugin
         run: gradle buildPlugin
@@ -93,7 +93,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.9.1"
+          gradle-version: "9.9.2"
 
       - name: Run Tests
         run: gradle check --no-daemon --no-build-cache --no-configuration-cache --console=plain
@@ -134,7 +134,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.9.1"
+          gradle-version: "9.9.2"
           cache-read-only: true
 
       - name: Run Plugin Verification tasks
@@ -180,7 +180,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.9.1"
+          gradle-version: "9.9.2"
           cache-read-only: true
 
       - name: Refresh release draft

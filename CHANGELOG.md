@@ -8,6 +8,12 @@ License: see LICENSE in the repository root.
 
 # Seq MCP Changelog
 
+## [2026.1.10] - 2026-11-21
+
+### Changed
+
+- Update Gradle to 9.9.2 for daemon-registry, TestKit temporary-directory and dependency-verification security fixes.
+
 ## [2026.1.9] - 2026-11-07
 
 ### Added

@@ -46,7 +46,7 @@ Tool calls flow through the provider's schema/argument checks and enabled-projec
 
 ## Build and validation
 
-Run from the repository root using Java 25 and an installed Gradle 9.9.1 on `PATH` (also selected as the local Gradle installation in the IDE). The repository does not bundle a Gradle wrapper. Initial runs need network/cache access for Gradle, dependencies and the target IDE.
+Run from the repository root using Java 25 and an installed Gradle 9.9.2 on `PATH` (also selected as the local Gradle installation in the IDE). The repository does not bundle a Gradle wrapper. Initial runs need network/cache access for Gradle, dependencies and the target IDE.
 
 ```sh
 gradle buildPlugin
