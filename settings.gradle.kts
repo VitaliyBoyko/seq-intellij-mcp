@@ -16,7 +16,7 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-check(gradle.gradleVersion == "9.9.1") { "Seq MCP builds require an installed Gradle 9.9.1." }
+check(gradle.gradleVersion == "9.9.2") { "Seq MCP builds require an installed Gradle 9.9.2." }
 rootProject.name = "seq-mcp-plugin"
 
 dependencyResolutionManagement.repositories {

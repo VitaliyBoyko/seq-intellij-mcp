@@ -6,15 +6,15 @@ License: see LICENSE in the repository root.
 
 # Development and testing
 
-Install Java 25 and Gradle 9.9.1, and put Gradle's `bin` directory on `PATH`.
+Install Java 25 and Gradle 9.9.2, and put Gradle's `bin` directory on `PATH`.
 The build checks the Gradle version. CI installs the same version through
 `gradle/actions/setup-gradle`; no Gradle distribution or wrapper is bundled here.
 If importing into IntelliJ IDEA, select the local Gradle installation under
 `Settings | Build, Execution, Deployment | Build Tools | Gradle`.
 
 Obtain Gradle from its [official distribution page](https://gradle.org/releases/).
-For Gradle 9.9.1's binary ZIP, verify SHA-256 before extracting:
-`d8a18a7a841dd5df825d35a685fad6f2d7f12ac0c280e57b67c27b4a520ba228`.
+For Gradle 9.9.2's binary ZIP, verify SHA-256 before extracting:
+`971fcd7150ca4ba04852c0b2ca0d2d0ab9468e14b03473eab19528809914c76b`.
 
 ```bash
 gradle runIde
